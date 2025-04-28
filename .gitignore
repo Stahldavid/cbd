@@ -1,0 +1,40 @@
+# Arquivos de dependências (Node.js)
+# Ignora node_modules em qualquer diretório (mais geral)
+# node_modules/
+
+# Ou ignora especificamente nos diretórios backend e frontend
+backend/node_modules/
+frontend/node_modules/
+
+# Arquivos de build ou compilados
+build/
+dist/
+*.o
+*.out
+
+# Arquivos de log
+*.log
+logs/
+
+# Arquivos de ambiente (MUITO IMPORTANTE para chaves de API!)
+.env
+.env.*
+!/.env.example # Exceção comum para permitir um arquivo de exemplo
+
+# Arquivos de sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos de IDEs e editores
+.vscode/
+.idea/
+*.swp
+
+# Arquivos temporários
+*.tmp
+*~
+
+# Arquivos de teste (cobertura, etc.)
+coverage/
+.nyc_output/
+

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste SSE para CuraAI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #output {
+            border: 1px solid #ccc;
+            padding: 10px;
+            min-height: 200px;
+            margin-bottom: 20px;
+            white-space: pre-wrap;
+        }
+        #messageInput {
+            width: 70%;
+            padding: 8px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #2e86de;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        .log {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Teste de SSE para CuraAI</h1>
+    
+    <div class="controls">
+        <label>
+            <input type="radio" name="mode" value="stream" checked> 
+            Modo Streaming
+        </label>
+        <label>
+            <input type="radio" name="mode" value="chat"> 
+            Modo Normal
+        </label>
+    </div>
+    
+    <div>
+        <input type="text" id="messageInput" placeholder="Digite sua mensagem" value="Olá, como vai?">
+        <button id="sendButton">Enviar</button>
+    </div>
+    
+    <h3>Resposta:</h3>
+    <div id="output"></div>
+    
+    <div class="log">
+        <h3>Log:</h3>
+        <div id="logOutput"></div>
+    </div>
+    
+    <script>
+        const output = document.getElementById('output');
+        const logOutput = document.getElementById('logOutput');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const modeInputs = document.getElementsByName('mode');
+        
+        // Função para registrar logs
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            logOutput.innerHTML += `[${timestamp}] ${message}<br>`;
+            console.log(`[${timestamp}] ${message}`);
+        }
+        
+        // Função para enviar mensagem
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            // Limpar output anterior
+            output.textContent = '';
+            
+            // Determinar modo (streaming ou normal)
+            let mode = 'stream';
+            for (const radio of modeInputs) {
+                if (radio.checked) {
+                    mode = radio.value;
+                    break;
+                }
+            }
+            
+            const endpoint = mode === 'stream' ? 'stream' : 'chat';
+            const url = `http://localhost:3001/api/${endpoint}`;
+            
+            log(`Enviando mensagem para ${url}: "${message}"`);
+            
+            try {
+                if (mode === 'stream') {
+                    // Usar fetch com reader para processar stream
+                    log('Iniciando conexão em modo streaming...');
+                    
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ message })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`Erro HTTP: ${response.status}`);
+                    }
+                    
+                    log(`Conexão estabelecida, status: ${response.status}`);
+                    log(`Content-Type: ${response.headers.get('Content-Type')}`);
+                    
+                    // Processar o stream
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    
+                    log('Começando a ler stream...');
+                    
+                    while (true) {
+                        log('Aguardando próximo chunk...');
+                        const { done, value } = await reader.read();
+                        
+                        if (done) {
+                            log('Stream concluído');
+                            break;
+                        }
+                        
+                        // Decodificar o chunk
+                        const chunk = decoder.decode(value, { stream: true });
+                        log(`Chunk recebido (${chunk.length} bytes)`);
+                        
+                        // Processar eventos SSE
+                        const lines = chunk.split('\n');
+                        for (const line of lines) {
+                            if (line.startsWith('data:')) {
+                                const data = line.substring(5).trim();
+                                output.textContent += data;
+                                log(`Dados processados: "${data.substring(0, 30)}${data.length > 30 ? '...' : ''}"`);
+                            } else if (line.startsWith('event:')) {
+                                const eventType = line.substring(6).trim();
+                                log(`Evento recebido: ${eventType}`);
+                            }
+                        }
+                    }
+                } else {
+                    // Usar fetch normal para resposta completa
+                    log('Iniciando solicitação em modo normal...');
+                    
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ message })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`Erro HTTP: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    log('Resposta completa recebida');
+                    output.textContent = data.text;
+                }
+            } catch (error) {
+                log(`ERRO: ${error.message}`);
+                output.textContent = `Erro: ${error.message}`;
+            }
+        }
+        
+        // Adicionar eventos
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        log('Página carregada e pronta');
+    </script>
+</body>
+</html>
