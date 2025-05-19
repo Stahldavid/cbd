@@ -1,8 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+// Automatically uses the mock from __mocks__/jspdf.js
+
+test('renders CuraAI title in the header', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  // Check for the H1 a specific title to avoid conflicts with other occurrences
+  const titleElement = screen.getByRole('heading', { name: /CuraAI/i, level: 1 });
+  expect(titleElement).toBeInTheDocument();
 });

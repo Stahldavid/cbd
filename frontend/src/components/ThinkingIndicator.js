@@ -11,12 +11,12 @@ const Indicator = styled.div`
   align-items: center;
   gap: 0.3rem;
   padding: 0.5rem 1rem;
-  background-color: ${props => props.theme.colors.aiMessageBg};
+  background-color: ${(props) => props.theme.colors.aiMessageBg};
   border-radius: 10px;
   max-width: 100px;
   align-self: flex-start;
   margin-bottom: 0.5rem;
-  
+
   @media (prefers-color-scheme: dark) {
     background-color: #273c75;
   }
@@ -25,10 +25,10 @@ const Indicator = styled.div`
 const Dot = styled.div`
   width: 8px;
   height: 8px;
-  background-color: ${props => props.theme.colors.primary};
+  background-color: ${(props) => props.theme.colors.primary};
   border-radius: 50%;
   animation: ${bounce} 1.5s infinite ease-in-out;
-  animation-delay: ${props => props.delay || '0s'};
+  animation-delay: ${(props) => props.delay || '0s'};
 `;
 
 export const ThinkingIndicator = () => {

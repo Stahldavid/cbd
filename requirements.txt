@@ -1,0 +1,1 @@
+pypdf>=3.0.0 # Or the specific version you are using 

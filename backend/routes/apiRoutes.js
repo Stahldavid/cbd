@@ -1,92 +1,92 @@
 // routes/apiRoutes.js - Definição de rotas da API
 
 import express from 'express';
-import { handleChat, handleStreamChat, clearSession, getSessionHistory } from '../controllers/chatController.js';
+import {
+  handleChat,
+  handleStreamChat,
+  clearSession,
+  getSessionHistory,
+} from '../controllers/chatController.js';
 import { conversationMemory } from '../services/memoryService.js';
+import { verifySupabaseToken } from '../middleware/authSupabase.js';
+import { generateContent } from '../services/geminiService.js';
+
+console.log('[DEBUG] apiRoutes.js: File loaded and router creation started.');
+
+const MODEL_NAME = 'gemini-2.5-flash-preview-04-17';
 
 // Cria o roteador Express
 const createRouter = (availableFunctions, systemInstructionText, tools) => {
   const router = express.Router();
+  console.log('[DEBUG] apiRoutes.js: Express router instance created.');
 
-  // Rota de teste básico
-  router.get('/test', (req, res) => res.json({ message: 'Streaming server running!' }));
+  // Middleware to log requests specifically to this router
+  router.use((req, res, next) => {
+    console.log(`[API ROUTER LOGGER] Router received ${req.method} request for ${req.url} (original: ${req.originalUrl})`);
+    next();
+  });
+
+  // Rota de teste pública
+  router.get('/test', (req, res) => {
+    res.json({
+      status: "success",
+      message: "API is working correctly",
+      timestamp: new Date().toISOString()
+    });
+  });
 
   // Rota para chat normal
-  router.post('/chat', (req, res) => handleChat(req, res, availableFunctions, systemInstructionText, tools));
+  router.post('/chat', verifySupabaseToken, (req, res, next) => {
+    handleChat(req, res, availableFunctions, systemInstructionText, tools).catch(next); 
+  });
 
   // Rota para streaming
-  router.post('/stream', (req, res) => handleStreamChat(req, res, availableFunctions, systemInstructionText, tools));
+  router.post('/stream', verifySupabaseToken, (req, res, next) => {
+    handleStreamChat(req, res, availableFunctions, systemInstructionText, tools).catch(next); 
+  });
 
   // Rota para limpar sessão
-  router.post('/clear-session', clearSession);
+  router.post('/clear-session', verifySupabaseToken, clearSession);
 
   // Rota para obter o histórico da sessão (para persistência no frontend)
-  router.get('/session-history/:sessionId', (req, res) => {
-    const sessionId = req.params.sessionId;
-    const session = conversationMemory.getSession(sessionId);
-    const history = session.history;
-    
-    // Transforma o formato interno do histórico para um formato mais amigável para o frontend
-    const formattedHistory = [];
-    
-    for (let i = 0; i < history.length; i++) {
-      const item = history[i];
+  router.get('/session-history', verifySupabaseToken, getSessionHistory);
+  router.get('/session-history/:sessionId', verifySupabaseToken, getSessionHistory);
+
+  // Nova rota para sumarizar uma consulta específica
+  console.log('[DEBUG] apiRoutes.js: Defining route POST /api/summarize-consultation');
+  router.post('/summarize-consultation', verifySupabaseToken, async (req, res, next) => {
+    try {
+      const { consultation_text } = req.body;
+      if (!consultation_text) {
+        return res.status(400).json({ success: false, error: 'consultation_text is required.' });
+      }
+
+      const systemPrompt = `Você é um assistente médico especializado em resumir transcrições de consultas.
+      Resuma o seguinte texto da consulta de forma concisa e objetiva, destacando os pontos principais, queixas, diagnósticos (se houver) e planos de tratamento.
+      O resumo deve ser útil para referência rápida do médico.`;
       
-      // Mensagem do usuário (texto simples)
-      if (item.role === 'user' && item.parts && item.parts.length === 1 && item.parts[0].text) {
-        formattedHistory.push({
-          id: `restored-user-${i}`,
-          text: item.parts[0].text,
-          sender: 'user',
-          timestamp: new Date(),
-          type: 'user',
-          isComplete: true
-        });
+      const contents = [{ role: 'user', parts: [{ text: consultation_text }] }];
+      
+      const result = await generateContent(MODEL_NAME, contents, systemPrompt, null);
+      
+      let summaryText = '';
+      if (result && result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts[0]) {
+        summaryText = result.candidates[0].content.parts[0].text;
+      } else if (result && typeof result.text === 'function') {
+        summaryText = result.text();
       }
-      // Resposta do modelo (texto simples)
-      else if (item.role === 'model' && item.parts && item.parts.length === 1 && item.parts[0].text) {
-        formattedHistory.push({
-          id: `restored-ai-${i}`,
-          text: item.parts[0].text,
-          sender: 'ai',
-          timestamp: new Date(),
-          type: 'ai',
-          isComplete: true
-        });
+      
+      if (!summaryText) {
+         console.error('[ERROR] summarize-consultation: Failed to extract summary text from Gemini response. Response:', JSON.stringify(result, null, 2));
+         throw new Error('Failed to extract summary text from AI response.');
       }
-      // Chamada de função
-      else if (item.role === 'model' && item.parts && item.parts.length === 1 && item.parts[0].functionCall) {
-        const functionCall = item.parts[0].functionCall;
-        formattedHistory.push({
-          id: `restored-fc-${i}`,
-          type: 'functionCall',
-          sender: 'ai',
-          timestamp: new Date(),
-          functionCallInfo: {
-            name: functionCall.name,
-            args: functionCall.args
-          },
-          text: `🔧 Chamando Função: ${functionCall.name}\n${JSON.stringify(functionCall.args, null, 2)}`
-        });
-      }
-      // Resultado de função
-      else if (item.role === 'user' && item.parts && item.parts.length === 1 && item.parts[0].functionResponse) {
-        const functionResponse = item.parts[0].functionResponse;
-        formattedHistory.push({
-          id: `restored-fr-${i}`,
-          type: 'functionResult',
-          sender: 'ai',
-          timestamp: new Date(),
-          functionResultInfo: {
-            name: functionResponse.name,
-            result: functionResponse.response
-          },
-          text: `✅ Resultado (${functionResponse.name}):\n${JSON.stringify(functionResponse.response, null, 2)}`
-        });
-      }
+
+      res.json({ success: true, summary: summaryText });
+
+    } catch (error) {
+      console.error('[ERROR] In /summarize-consultation route:', error);
+      res.status(500).json({ success: false, error: error.message || 'Internal server error during consultation summarization.' });
     }
-    
-    res.json({ success: true, history: formattedHistory });
   });
 
   // Rota de depuração (apenas em ambiente de desenvolvimento)

@@ -25,7 +25,6 @@
 // // 4. Export the map and the array
 // export { availableFunctions, allDeclarations };
 
-
 // backend/tools/index.js
 
 // 1. Import tools from their respective files
@@ -37,20 +36,20 @@ import { fetch_pubmed_details, fetchPubmedDetailsDeclaration } from './fetchPubm
 
 // 2. Create the map of function implementations
 const availableFunctions = {
-    [tavilySearchDeclaration.name]: tavilySearch,
-    [fetchAndProcessUrlDeclaration.name]: fetchAndProcessUrl,
-    [fillPrescriptionDeclaration.name]: fillPrescription,
-    [searchPubmedDeclaration.name]: search_pubmed,
-    [fetchPubmedDetailsDeclaration.name]: fetch_pubmed_details, // <-- ADICIONE ESTA LINHA
+  [tavilySearchDeclaration.name]: tavilySearch,
+  [fetchAndProcessUrlDeclaration.name]: fetchAndProcessUrl,
+  [fillPrescriptionDeclaration.name]: fillPrescription,
+  [searchPubmedDeclaration.name]: search_pubmed,
+  [fetchPubmedDetailsDeclaration.name]: fetch_pubmed_details, // <-- ADICIONE ESTA LINHA
 };
 
 // 3. Create the array of all function declarations
 const allDeclarations = [
-    tavilySearchDeclaration,
-    fetchAndProcessUrlDeclaration,
-    fillPrescriptionDeclaration,
-    searchPubmedDeclaration,
-    fetchPubmedDetailsDeclaration, // <-- ADICIONE ESTA LINHA
+  tavilySearchDeclaration,
+  fetchAndProcessUrlDeclaration,
+  fillPrescriptionDeclaration,
+  searchPubmedDeclaration,
+  fetchPubmedDetailsDeclaration, // <-- ADICIONE ESTA LINHA
 ];
 
 // 4. Export the map and the array

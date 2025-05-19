@@ -38,3 +38,18 @@ Thumbs.db
 coverage/
 .nyc_output/
 
+
+
+# Ignore all .env files in any directory
+**/.env
+**/.env.local
+**/.env.development
+**/.env.development.local
+**/.env.test
+**/.env.test.local
+**/.env.production
+**/.env.production.local
+
+# Specific locations (optional, for clarity)
+/frontend/.env*
+/backend/.env*

@@ -162,8 +162,6 @@
 // // --- Exportações ---
 // export { search_pubmed, searchPubmedDeclaration };
 
-
-
 // backend/tools/searchPubmed.js
 
 import fetch from 'node-fetch';
@@ -179,51 +177,67 @@ const NCBI_API_KEY = process.env.NCBI_API_KEY;
 const PMC_OPEN_ACCESS_FILTER = 'pubmed pmc open access[filter]';
 
 // Função auxiliar para extrair texto do XML do EFetch (simplificada)
-function extractAbstractFromXml(article) { //
-    const abstractSection = article?.Abstract?.AbstractText; //
-    let abstractText = 'Abstract not available.'; //
-    if (typeof abstractSection === 'string') { //
-        abstractText = abstractSection; //
-    } else if (typeof abstractSection === 'object' && abstractSection._) { //
-        abstractText = abstractSection._; //
-    } else if (Array.isArray(abstractSection)) { //
-        abstractText = abstractSection.map(sec => (typeof sec === 'string' ? sec : (sec._ || ''))).join('\n'); //
-    }
-    return abstractText.trim(); //
+function extractAbstractFromXml(article) {
+  //
+  const abstractSection = article?.Abstract?.AbstractText; //
+  let abstractText = 'Abstract not available.'; //
+  if (typeof abstractSection === 'string') {
+    //
+    abstractText = abstractSection; //
+  } else if (typeof abstractSection === 'object' && abstractSection._) {
+    //
+    abstractText = abstractSection._; //
+  } else if (Array.isArray(abstractSection)) {
+    //
+    abstractText = abstractSection
+      .map((sec) => (typeof sec === 'string' ? sec : sec._ || ''))
+      .join('\n'); //
+  }
+  return abstractText.trim(); //
 }
 
 // --- Function Implementation (Modificada com parâmetro pmc_open_access_only) ---
-async function search_pubmed({ //
+async function search_pubmed({
+  //
   query, //
   max_results = 5, //
   article_type, //
   sort_order = 'relevance', //
   min_publication_date, //
   max_publication_date, //
-  pmc_open_access_only = false // <-- NOVO PARÂMETRO com default false //
+  pmc_open_access_only = false, // <-- NOVO PARÂMETRO com default false //
 }) {
-  console.log(`[PubMed Search] Query: "${query}", Type: ${article_type || 'any'}, Sort: ${sort_order}, Max: ${max_results}, PMC OA Only: ${pmc_open_access_only}`); //
+  console.log(
+    `[PubMed Search] Query: "${query}", Type: ${article_type || 'any'}, Sort: ${sort_order}, Max: ${max_results}, PMC OA Only: ${pmc_open_access_only}`
+  ); //
   const safeMaxResults = Math.max(1, Math.min(15, parseInt(max_results, 10) || 5)); //
 
-  try { //
+  try {
+    //
     // --- Step 1: Constrói Termo e URL do ESearch ---
     let searchTerm = query; //
 
     // Aplica filtro de tipo se não estiver na query original
-    if (article_type && searchTerm.toLowerCase().indexOf(article_type.toLowerCase()) === -1) { //
-        searchTerm += ` AND "${article_type}"[ptyp]`; //
-        console.log(`[PubMed Search] Applying article type filter: "${article_type}"[ptyp]`); //
-    } else if (article_type) { //
-        console.log(`[PubMed Search] Article type "${article_type}" seems present in query, not adding specific [ptyp] filter.`); //
+    if (article_type && searchTerm.toLowerCase().indexOf(article_type.toLowerCase()) === -1) {
+      //
+      searchTerm += ` AND "${article_type}"[ptyp]`; //
+      console.log(`[PubMed Search] Applying article type filter: "${article_type}"[ptyp]`); //
+    } else if (article_type) {
+      //
+      console.log(
+        `[PubMed Search] Article type "${article_type}" seems present in query, not adding specific [ptyp] filter.`
+      ); //
     }
 
     // **MODIFICAÇÃO:** Aplica o filtro PMC Open Access CONDICIONALMENTE
-    if (pmc_open_access_only === true) { //
+    if (pmc_open_access_only === true) {
+      //
       searchTerm = `(${searchTerm}) AND ${PMC_OPEN_ACCESS_FILTER}`; //
       console.log(`[PubMed Search] Applying PMC Open Access filter.`); //
     }
 
-    const esearchParams = new URLSearchParams({ //
+    const esearchParams = new URLSearchParams({
+      //
       db: 'pubmed', //
       term: searchTerm, //
       retmax: safeMaxResults.toString(), //
@@ -242,18 +256,21 @@ async function search_pubmed({ //
 
     // --- Step 2: Chama ESearch para obter PMIDs ---
     const esearchRes = await fetch(esearchUrl); //
-    if (!esearchRes.ok) throw new Error(`ESearch failed: ${esearchRes.status} ${esearchRes.statusText}`); //
+    if (!esearchRes.ok)
+      throw new Error(`ESearch failed: ${esearchRes.status} ${esearchRes.statusText}`); //
     const esearchData = await esearchRes.json(); //
 
     const pmids = esearchData?.esearchresult?.idlist; //
-    if (!pmids || pmids.length === 0) { //
+    if (!pmids || pmids.length === 0) {
+      //
       console.log(`[PubMed Search] No PMIDs found for query.`); //
       return { result: { success: true, results: [] } }; //
     }
     console.log(`[PubMed Search] Found ${pmids.length} PMIDs. Fetching details...`); //
 
     // --- Step 3: Constrói URL EFetch ---
-    const efetchParams = new URLSearchParams({ //
+    const efetchParams = new URLSearchParams({
+      //
       db: 'pubmed', //
       id: pmids.join(','), //
       retmode: 'xml', //
@@ -266,7 +283,8 @@ async function search_pubmed({ //
 
     // --- Step 4: Chama EFetch ---
     const efetchRes = await fetch(efetchUrl); //
-    if (!efetchRes.ok) throw new Error(`EFetch failed: ${efetchRes.status} ${efetchRes.statusText}`); //
+    if (!efetchRes.ok)
+      throw new Error(`EFetch failed: ${efetchRes.status} ${efetchRes.statusText}`); //
     const xmlData = await efetchRes.text(); //
 
     // --- Step 5: Parseia XML e extrai dados ---
@@ -276,42 +294,56 @@ async function search_pubmed({ //
     const results = []; //
     const articles = parsedData?.PubmedArticleSet?.PubmedArticle; //
 
-    if (!articles) { //
+    if (!articles) {
+      //
       console.warn(`[PubMed Search] EFetch result structure unexpected. PMIDs: ${pmids.join(',')}`); //
       return { result: { success: true, results: [] } }; //
     }
 
     const articlesArray = Array.isArray(articles) ? articles : [articles]; //
 
-    for (const pubmedArticle of articlesArray) { //
+    for (const pubmedArticle of articlesArray) {
+      //
       const article = pubmedArticle?.MedlineCitation?.Article; //
-      const pmid = pubmedArticle?.MedlineCitation?.PMID?._ || //
-                   pubmedArticle?.MedlineCitation?.PMID || //
-                   pubmedArticle?.PubmedData?.ArticleIdList?.ArticleId?.find(id => id?.$?.IdType === 'pubmed')?._ || //
-                   'Unknown PMID'; //
+      const pmid =
+        pubmedArticle?.MedlineCitation?.PMID?._ || //
+        pubmedArticle?.MedlineCitation?.PMID || //
+        pubmedArticle?.PubmedData?.ArticleIdList?.ArticleId?.find(
+          (id) => id?.$?.IdType === 'pubmed'
+        )?._ || //
+        'Unknown PMID'; //
 
-      if (!article || pmid === 'Unknown PMID') { //
-          console.warn('[PubMed Search] Skipping article due to missing data:', JSON.stringify(pubmedArticle).substring(0, 200)); //
-          continue; //
+      if (!article || pmid === 'Unknown PMID') {
+        //
+        console.warn(
+          '[PubMed Search] Skipping article due to missing data:',
+          JSON.stringify(pubmedArticle).substring(0, 200)
+        ); //
+        continue; //
       }
 
-      results.push({ //
+      results.push({
+        //
         pmid: pmid, //
         title: article.ArticleTitle || 'No Title Available', //
         abstract: extractAbstractFromXml(article), //
-        authors: article.AuthorList?.Author?.map(a => `${a.LastName || ''} ${a.Initials || ''}`.trim()).filter(Boolean) || [], //
+        authors:
+          article.AuthorList?.Author?.map((a) =>
+            `${a.LastName || ''} ${a.Initials || ''}`.trim()
+          ).filter(Boolean) || [], //
         journal: article.Journal?.Title || article.Journal?.ISOAbbreviation || 'Unknown Journal', //
-        publication_date: article.Journal?.JournalIssue?.PubDate?.Year || //
-                          article.Journal?.JournalIssue?.PubDate?.MedlineDate || //
-                          'Unknown Date', //
+        publication_date:
+          article.Journal?.JournalIssue?.PubDate?.Year || //
+          article.Journal?.JournalIssue?.PubDate?.MedlineDate || //
+          'Unknown Date', //
         url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`, //
       });
     }
 
     console.log(`[PubMed Search] Processed ${results.length} articles.`); //
     return { result: { success: true, results: results } }; //
-
-  } catch (error) { //
+  } catch (error) {
+    //
     console.error(`[PubMed Search Error] ${error.message}`); //
     console.error(error.stack); //
     return { result: { success: false, error: `Error during PubMed search: ${error.message}` } }; //
@@ -319,50 +351,73 @@ async function search_pubmed({ //
 }
 
 // --- Function Declaration (Schema ATUALIZADO com novo parâmetro booleano) ---
-const searchPubmedDeclaration = { //
-  name: "search_pubmed", //
-  description: "Realiza uma busca na base de dados PubMed por artigos científicos, retornando uma lista de artigos com título, abstract, autores, PMID e link. Pode opcionalmente filtrar por tipo, data, ordem e restringir a artigos Open Access no PMC.", // Descrição ATUALIZADA //
-  parameters: { //
+const searchPubmedDeclaration = {
+  //
+  name: 'search_pubmed', //
+  description:
+    'Realiza uma busca na base de dados PubMed por artigos científicos, retornando uma lista de artigos com título, abstract, autores, PMID e link. Pode opcionalmente filtrar por tipo, data, ordem e restringir a artigos Open Access no PMC.', // Descrição ATUALIZADA //
+  parameters: {
+    //
     type: Type.OBJECT, //
-    properties: { //
-      query: { //
+    properties: {
+      //
+      query: {
+        //
         type: Type.STRING, //
-        description: "Termos de busca ou pergunta para pesquisar no PubMed (ex: 'CBD AND epilepsy')." //
+        description:
+          "Termos de busca ou pergunta para pesquisar no PubMed (ex: 'CBD AND epilepsy').", //
       },
-      max_results: { //
+      max_results: {
+        //
         type: Type.INTEGER, //
-        description: "Número máximo de artigos a retornar (opcional, padrão interno: 5, máximo: 15)." //
+        description:
+          'Número máximo de artigos a retornar (opcional, padrão interno: 5, máximo: 15).', //
       },
-      article_type: { //
+      article_type: {
+        //
         type: Type.STRING, //
-        description: "Filtra por um tipo específico de publicação (opcional). A função evita aplicar o filtro se o termo já estiver na query.", //
-        enum: [ //
-          "Clinical Trial", "Randomized Controlled Trial", "Review", //
-          "Systematic Review", "Meta-Analysis", "Guideline", //
-          "Observational Study", "Case Reports" //
-        ]
+        description:
+          'Filtra por um tipo específico de publicação (opcional). A função evita aplicar o filtro se o termo já estiver na query.', //
+        enum: [
+          //
+          'Clinical Trial',
+          'Randomized Controlled Trial',
+          'Review', //
+          'Systematic Review',
+          'Meta-Analysis',
+          'Guideline', //
+          'Observational Study',
+          'Case Reports', //
+        ],
       },
-      sort_order: { //
+      sort_order: {
+        //
         type: Type.STRING, //
         description: "Critério para ordenar os resultados (opcional). 'relevance' é o padrão.", //
-        enum: [ "relevance", "publication_date" ] //
+        enum: ['relevance', 'publication_date'], //
       },
-      min_publication_date: { //
+      min_publication_date: {
+        //
         type: Type.STRING, //
-        description: "Data de publicação mais antiga (opcional). Formato Abschluss oder Abschluss/MM/DD." //
+        description:
+          'Data de publicação mais antiga (opcional). Formato Abschluss oder Abschluss/MM/DD.', //
       },
-      max_publication_date: { //
+      max_publication_date: {
+        //
         type: Type.STRING, //
-        description: "Data de publicação mais recente (opcional). Formato Abschluss oder Abschluss/MM/DD." //
+        description:
+          'Data de publicação mais recente (opcional). Formato Abschluss oder Abschluss/MM/DD.', //
       },
       // *** NOVO PARÂMETRO BOOLEANO ***
-      pmc_open_access_only: { //
+      pmc_open_access_only: {
+        //
         type: Type.BOOLEAN, //
-        description: "Opcional. Se definido como true, busca apenas artigos de acesso livre (Open Access) disponíveis no PubMed Central (PMC). Padrão: false." //
-      }
+        description:
+          'Opcional. Se definido como true, busca apenas artigos de acesso livre (Open Access) disponíveis no PubMed Central (PMC). Padrão: false.', //
+      },
     },
-    required: ["query"] //
-  }
+    required: ['query'], //
+  },
 };
 
 // --- Exportações ---

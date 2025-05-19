@@ -1,8 +1,11 @@
 // SettingsModal.js - Modal de configurações do médico
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { ActionButton } from './ChatSection';
+import { useAuth } from './AuthContext';
+import { supabase } from './supabaseClient';
+import { useNavigate } from 'react-router-dom';
 
 // --- Modal Components ---
 const ModalOverlay = styled.div`
@@ -11,8 +14,8 @@ const ModalOverlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: ${props => props.theme.colors.modalOverlay};
-  display: ${props => props.isOpen ? 'flex' : 'none'};
+  background-color: ${(props) => props.theme.colors.modalOverlay};
+  display: ${(props) => (props.$isOpen ? 'flex' : 'none')};
   justify-content: center;
   align-items: center;
   z-index: 1000;
@@ -20,13 +23,13 @@ const ModalOverlay = styled.div`
 `;
 
 const ModalContent = styled.div`
-  background-color: ${props => props.theme.colors.modalBackground};
+  background-color: ${(props) => props.theme.colors.modalBackground};
   border-radius: 8px;
   max-width: 800px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: ${props => props.theme.shadows.main};
+  box-shadow: ${(props) => props.theme.shadows.main};
   display: flex;
   flex-direction: column;
 `;
@@ -36,12 +39,12 @@ const ModalHeader = styled.div`
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid ${props => props.theme.colors.border};
-  
+  border-bottom: 1px solid ${(props) => props.theme.colors.border};
+
   h2 {
     font-size: 1.25rem;
     margin: 0;
-    color: ${props => props.theme.colors.lightText};
+    color: ${(props) => props.theme.colors.lightText};
   }
 `;
 
@@ -55,16 +58,16 @@ const ModalBody = styled.div`
 
 const ModalFooter = styled.div`
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 1rem;
   padding: 1rem 1.5rem;
-  border-top: 1px solid ${props => props.theme.colors.border};
+  border-top: 1px solid ${(props) => props.theme.colors.border};
 `;
 
 const CloseButton = styled.button`
   border: none;
   background: none;
-  color: ${props => props.theme.colors.lightText};
+  color: ${(props) => props.theme.colors.lightText};
   cursor: pointer;
   font-size: 1.25rem;
   display: flex;
@@ -74,7 +77,7 @@ const CloseButton = styled.button`
   height: 2rem;
   border-radius: 50%;
   transition: background-color 0.2s ease;
-  
+
   &:hover {
     background-color: rgba(255, 255, 255, 0.1);
   }
@@ -82,116 +85,123 @@ const CloseButton = styled.button`
 
 // --- Settings Form Components ---
 const SettingsPanel = styled.div`
-  background-color: ${props => props.theme.colors.messageBg}; 
-  border: 1px solid ${props => props.theme.colors.border};
-  border-radius: 8px; 
-  padding: 1rem 1.5rem; 
-  margin-bottom: 1.5rem; 
-  box-shadow: ${props => props.theme.shadows.main};
-  
-  h3 { 
-    margin-top: 0; 
-    margin-bottom: 1rem; 
-    font-size: 1.1rem; 
-    font-weight: 600; 
-    color: ${props => props.theme.colors.primary}; 
+  background-color: ${(props) => props.theme.colors.messageBg};
+  border: 1px solid ${(props) => props.theme.colors.border};
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: ${(props) => props.theme.shadows.main};
+
+  h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: ${(props) => props.theme.colors.primary};
   }
 `;
 
 const FormGroup = styled.div`
-  display: grid; 
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-  gap: 1rem; 
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
   margin-bottom: 1rem;
 `;
 
 const FormLabel = styled.label`
-  display: block; 
-  margin-bottom: 0.25rem; 
-  font-size: 0.875rem; 
-  font-weight: 500; 
-  color: ${props => props.theme.colors.prescriptionLabel};
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: ${(props) => props.theme.colors.prescriptionLabel};
 `;
 
 const FormInput = styled.input`
-  width: 100%; 
-  padding: 0.5rem 0.75rem; 
-  border: 1px solid ${props => props.theme.colors.prescriptionBorder};
-  border-radius: 4px; 
-  font-size: 0.95rem; 
-  background-color: ${props => props.theme.colors.background}; 
-  color: ${props => props.theme.colors.text};
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${(props) => props.theme.colors.prescriptionBorder};
+  border-radius: 4px;
+  font-size: 0.95rem;
+  background-color: ${(props) => props.theme.colors.background};
+  color: ${(props) => props.theme.colors.text};
   transition: border-color 0.2s ease-in-out;
+
+  &:focus {
+    outline: none;
+    border-color: ${(props) => props.theme.colors.primary};
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  }
   
-  &:focus { 
-    outline: none; 
-    border-color: ${props => props.theme.colors.primary}; 
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2); 
+  &[readOnly] {
+    background-color: ${(props) => props.theme.colors.disabledInputBackground};
+    color: ${(props) => props.theme.colors.disabledInputText};
+    cursor: not-allowed;
   }
 `;
 
 const FormTextarea = styled.textarea`
-  width: 100%; 
-  padding: 0.5rem 0.75rem; 
-  border: 1px solid ${props => props.theme.colors.prescriptionBorder};
-  border-radius: 4px; 
-  font-size: 0.95rem; 
-  background-color: ${props => props.theme.colors.background}; 
-  color: ${props => props.theme.colors.text};
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${(props) => props.theme.colors.prescriptionBorder};
+  border-radius: 4px;
+  font-size: 0.95rem;
+  background-color: ${(props) => props.theme.colors.background};
+  color: ${(props) => props.theme.colors.text};
   transition: border-color 0.2s ease-in-out;
   min-height: 80px;
   resize: vertical;
-  
-  &:focus { 
-    outline: none; 
-    border-color: ${props => props.theme.colors.primary}; 
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2); 
+
+  &:focus {
+    outline: none;
+    border-color: ${(props) => props.theme.colors.primary};
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
   }
 `;
 
 const LogoUploadArea = styled.div`
-  border: 2px dashed ${props => props.theme.colors.border};
+  border: 2px dashed ${(props) => props.theme.colors.border};
   border-radius: 8px;
   padding: 1.5rem;
   text-align: center;
   margin-top: 0.5rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  
+
   &:hover {
-    border-color: ${props => props.theme.colors.primary};
+    border-color: ${(props) => props.theme.colors.primary};
   }
-  
+
   input {
     display: none;
   }
-  
+
   p {
     margin: 0;
-    color: ${props => props.theme.colors.lightText};
+    color: ${(props) => props.theme.colors.lightText};
     font-size: 0.9rem;
   }
-  
+
   svg {
     margin-bottom: 0.5rem;
-    color: ${props => props.theme.colors.lightText};
+    color: ${(props) => props.theme.colors.lightText};
   }
 `;
 
 const LogoPreview = styled.div`
   margin-top: 1rem;
   text-align: center;
-  
+
   img {
     max-width: 100%;
     max-height: 100px;
     border-radius: 4px;
+    object-fit: cover;
   }
 `;
 
 const SuccessMessage = styled.div`
-  background-color: ${props => props.theme.colors.success}20;
-  color: ${props => props.theme.colors.success};
+  background-color: ${(props) => props.theme.colors.success}20;
+  color: ${(props) => props.theme.colors.success};
   padding: 0.75rem;
   border-radius: 4px;
   margin-bottom: 1rem;
@@ -201,169 +211,261 @@ const SuccessMessage = styled.div`
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  
+
   svg {
     flex-shrink: 0;
   }
 `;
 
 // Componente do Modal de Configurações
-export function SettingsModal({ 
-  isOpen, 
-  onClose, 
-  doctorSettings,
-  setDoctorSettings
-}) {
-  const [formData, setFormData] = useState({...doctorSettings});
-  const [logoPreview, setLogoPreview] = useState(doctorSettings.logo || '');
+export function SettingsModal({ isOpen, onClose, doctorSettings, setDoctorSettings }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    crm: '',
+    email: '',
+    specialty: '',
+    clinic_address: '',
+    clinic_phone: '',
+    profile_picture_url: ''
+  });
+  const [logoPreview, setLogoPreview] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
-  
-  // Atualiza o formulário quando as configurações mudam
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    if (user && isOpen) {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('doctors')
+          .select('name, crm, email, specialty, clinic_address, clinic_phone, profile_picture_url')
+          .eq('id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+          throw error;
+        }
+        
+        if (data) {
+          setFormData(prev => ({ ...prev, ...data, email: user.email }));
+          setLogoPreview(data.profile_picture_url || '');
+        } else {
+          setFormData(prev => ({
+            ...prev,
+            email: user.email || '',
+            name: user.user_metadata?.full_name || '',
+          }));
+          setLogoPreview('');
+        }
+      } catch (error) {
+        console.error("Erro ao buscar perfil:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [user, isOpen]);
+
   useEffect(() => {
-    setFormData({...doctorSettings});
-    setLogoPreview(doctorSettings.logo || '');
-  }, [doctorSettings, isOpen]);
+    fetchProfile();
+  }, [fetchProfile]);
   
-  // Manipulador para mudança nos campos do formulário
+  useEffect(() => {
+    if (!isOpen) {
+      setShowSuccess(false);
+    }
+  }, [isOpen]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
-  
-  // Manipulador para upload do logo
-  const handleLogoUpload = (e) => {
+
+  const handleLogoUpload = async (e) => {
     const file = e.target.files[0];
-    if (file) {
+    if (file && user) {
       const reader = new FileReader();
       reader.onloadend = () => {
         setLogoPreview(reader.result);
-        setFormData(prev => ({
-          ...prev,
-          logo: reader.result
-        }));
       };
       reader.readAsDataURL(file);
+
+      // const filePath = `${user.id}-logo.png`; // Comment this out
+      const filePath = `test-upload.png`; // Use a very simple, hardcoded name
+      try {
+        setSaving(true);
+        const { error: uploadError } = await supabase.storage
+          .from('profile-pictures')
+          // .upload(filePath, file, { upsert: true }); // Comment this out
+          .upload(filePath, file); // Try without upsert
+
+        if (uploadError) {
+          console.log("Upload error details:", uploadError);
+          throw uploadError;
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from('profile-pictures')
+          .getPublicUrl(filePath);
+
+        if (publicUrlData) {
+          setFormData((prev) => ({
+            ...prev,
+            profile_picture_url: publicUrlData.publicUrl,
+          }));
+        }
+      } catch (error) {
+        console.error("Erro ao fazer upload do logo:", error);
+      } finally {
+        setSaving(false);
+      }
     }
   };
-  
-  // Manipulador para salvar configurações
-  const handleSave = () => {
-    // Atualiza as configurações no estado do app
-    setDoctorSettings(formData);
+
+  const handleSave = async () => {
+    if (!user) return;
+    setSaving(true);
+    setShowSuccess(false);
+
+    const { email, ...profileDataToSave } = formData;
     
-    // Salva no localStorage
-    localStorage.setItem('curaAIDoctorSettings', JSON.stringify(formData));
-    
-    // Exibe mensagem de sucesso
+    const dataToUpsert = {
+        id: user.id,
+        name: profileDataToSave.name,
+        crm: profileDataToSave.crm,
+        specialty: profileDataToSave.specialty,
+        clinic_address: profileDataToSave.clinic_address,
+        clinic_phone: profileDataToSave.clinic_phone,
+        profile_picture_url: profileDataToSave.profile_picture_url,
+        email: user.email,
+        updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const { error } = await supabase
+        .from('doctors')
+        .upsert(dataToUpsert, { onConflict: 'id' });
+
+      if (error) throw error;
+
+      const updatedDoctorSettings = {
+        doctorName: dataToUpsert.name,
+        crm: dataToUpsert.crm,
+        phone: dataToUpsert.clinic_phone,
+        address: dataToUpsert.clinic_address,
+        logo: dataToUpsert.profile_picture_url,
+      };
+      setDoctorSettings(updatedDoctorSettings); 
+      
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
+    } catch (error) {
+      console.error("Erro ao salvar configurações:", error);
+    } finally {
+      setSaving(false);
+    }
   };
-  
+
+  const handleLogout = async () => {
+    setSaving(true);
+    try {
+      await supabase.auth.signOut();
+      navigate('/login');
+      onClose();
+    } catch (error) {
+      console.error("Error logging out:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
   return (
-    <ModalOverlay isOpen={isOpen}>
-      <ModalContent>
+    <ModalOverlay $isOpen={isOpen} onClick={onClose}>
+      <ModalContent onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
           <h2>Configurações do Médico</h2>
           <CloseButton onClick={onClose}>×</CloseButton>
         </ModalHeader>
         <ModalBody>
+          {loading && <p>Carregando perfil...</p>}
+          {!loading && (
+            <>
           {showSuccess && (
             <SuccessMessage>
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                <polyline points="22 4 12 14.01 9 11.01"></polyline>
-              </svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
               Configurações salvas com sucesso!
             </SuccessMessage>
           )}
-          
+              <SettingsPanel>
+                <h3>Informações Pessoais e Contato</h3>
+                <FormGroup>
+                  <div>
+                    <FormLabel htmlFor="email">Email (não editável)</FormLabel>
+                    <FormInput type="email" id="email" name="email" value={formData.email || ''} readOnly />
+                  </div>
+                  <div>
+                    <FormLabel htmlFor="name">Nome Completo</FormLabel>
+                    <FormInput type="text" id="name" name="name" value={formData.name || ''} onChange={handleChange} placeholder="Dr. Nome Completo" />
+                  </div>
+                </FormGroup>
+              </SettingsPanel>
+
           <SettingsPanel>
             <h3>Informações Profissionais</h3>
             <FormGroup>
               <div>
-                <FormLabel htmlFor="doctorName">Nome do Médico</FormLabel>
-                <FormInput 
-                  type="text" 
-                  id="doctorName" 
-                  name="doctorName" 
-                  value={formData.doctorName || ''} 
-                  onChange={handleChange} 
-                  placeholder="Dr. Nome Completo"
-                />
-              </div>
-              <div>
                 <FormLabel htmlFor="crm">CRM</FormLabel>
-                <FormInput 
-                  type="text" 
-                  id="crm" 
-                  name="crm" 
-                  value={formData.crm || ''} 
-                  onChange={handleChange}
-                  placeholder="CRM/UF 12345" 
-                />
+                    <FormInput type="text" id="crm" name="crm" value={formData.crm || ''} onChange={handleChange} placeholder="CRM/UF 12345" />
               </div>
               <div>
-                <FormLabel htmlFor="phone">Telefone</FormLabel>
-                <FormInput 
-                  type="text" 
-                  id="phone" 
-                  name="phone" 
-                  value={formData.phone || ''} 
-                  onChange={handleChange}
-                  placeholder="(00) 00000-0000" 
-                />
+                    <FormLabel htmlFor="specialty">Especialidade</FormLabel>
+                    <FormInput type="text" id="specialty" name="specialty" value={formData.specialty || ''} onChange={handleChange} placeholder="Cardiologia" />
               </div>
             </FormGroup>
-            
             <div>
-              <FormLabel htmlFor="address">Endereço do Consultório</FormLabel>
-              <FormTextarea 
-                id="address" 
-                name="address" 
-                value={formData.address || ''} 
-                onChange={handleChange}
-                placeholder="Rua, número, bairro, cidade - UF, CEP" 
-              />
+                  <FormLabel htmlFor="clinic_address">Endereço da Clínica</FormLabel>
+                  <FormTextarea id="clinic_address" name="clinic_address" value={formData.clinic_address || ''} onChange={handleChange} placeholder="Rua, número, bairro, cidade - UF, CEP" />
+                </div>
+                <div style={{marginTop: '1rem'}}>
+                  <FormLabel htmlFor="clinic_phone">Telefone da Clínica</FormLabel>
+                  <FormInput type="text" id="clinic_phone" name="clinic_phone" value={formData.clinic_phone || ''} onChange={handleChange} placeholder="(00) 00000-0000" />
             </div>
-            
-            <div style={{ marginTop: '1rem' }}>
-              <FormLabel>Logo ou Carimbo</FormLabel>
+              </SettingsPanel>
+
+              <SettingsPanel>
+                <h3>Logo/Foto de Perfil</h3>
               <LogoUploadArea onClick={() => document.getElementById('logoUpload').click()}>
-                <input 
-                  type="file" 
-                  id="logoUpload" 
-                  accept="image/*" 
-                  onChange={handleLogoUpload} 
-                />
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path>
-                  <polyline points="17 8 12 3 7 8"></polyline>
-                  <line x1="12" y1="3" x2="12" y2="15"></line>
-                </svg>
-                <p>Clique para fazer upload de uma imagem</p>
+                <input type="file" id="logoUpload" accept="image/*" onChange={handleLogoUpload} />
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  <p>{logoPreview || formData.profile_picture_url ? 'Clique para alterar o logo' : 'Clique para carregar um logo'}</p>
               </LogoUploadArea>
-              
-              {logoPreview && (
+                {(logoPreview || formData.profile_picture_url) && (
                 <LogoPreview>
-                  <img src={logoPreview} alt="Logo Preview" />
+                    <img src={logoPreview || formData.profile_picture_url} alt="Pré-visualização do Logo" />
                 </LogoPreview>
               )}
-            </div>
           </SettingsPanel>
+            </>
+          )}
         </ModalBody>
         <ModalFooter>
-          <ActionButton className="success" onClick={handleSave}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"></path>
-              <polyline points="17 21 17 13 7 13 7 21"></polyline>
-              <polyline points="7 3 7 8 15 8"></polyline>
-            </svg>
-            Salvar
+          <ActionButton onClick={handleLogout} disabled={saving} className="danger">
+            {saving ? 'Saindo...': 'Sair'}
           </ActionButton>
-          <ActionButton onClick={onClose}>Cancelar</ActionButton>
+          <div>
+            <ActionButton onClick={onClose} disabled={saving} style={{marginRight: '0.5rem'}}>Cancelar</ActionButton>
+            <ActionButton className="success" onClick={handleSave} disabled={saving || loading}>
+              {saving ? 'Salvando...' : (loading ? 'Carregando...' : 'Salvar Alterações')}
+            </ActionButton>
+          </div>
         </ModalFooter>
       </ModalContent>
     </ModalOverlay>

@@ -91,7 +91,6 @@
 // // --- Exportações ---
 // export { fetch_pubmed_details, fetchPubmedDetailsDeclaration };
 
-
 // backend/tools/fetchPubmedDetails.js
 
 import fetch from 'node-fetch';
@@ -105,30 +104,31 @@ const NCBI_API_KEY = process.env.NCBI_API_KEY;
 
 // Função auxiliar para extrair texto do XML do EFetch (simplificada)
 function extractAbstractFromXml(article) {
-    const abstractSection = article?.Abstract?.AbstractText;
-    let abstractText = 'Abstract not available.';
-    if (typeof abstractSection === 'string') {
-        abstractText = abstractSection;
-    } else if (typeof abstractSection === 'object' && abstractSection._) {
-        abstractText = abstractSection._;
-    } else if (Array.isArray(abstractSection)) {
-        abstractText = abstractSection.map(sec => (typeof sec === 'string' ? sec : (sec._ || ''))).join('\n');
-    }
-    return abstractText.trim();
+  const abstractSection = article?.Abstract?.AbstractText;
+  let abstractText = 'Abstract not available.';
+  if (typeof abstractSection === 'string') {
+    abstractText = abstractSection;
+  } else if (typeof abstractSection === 'object' && abstractSection._) {
+    abstractText = abstractSection._;
+  } else if (Array.isArray(abstractSection)) {
+    abstractText = abstractSection
+      .map((sec) => (typeof sec === 'string' ? sec : sec._ || ''))
+      .join('\n');
+  }
+  return abstractText.trim();
 }
 
 // Função auxiliar para encontrar ID do PMC
 function findPmcId(pubmedArticle) {
-    const articleIds = pubmedArticle?.PubmedData?.ArticleIdList?.ArticleId;
-    if (!articleIds) return null;
+  const articleIds = pubmedArticle?.PubmedData?.ArticleIdList?.ArticleId;
+  if (!articleIds) return null;
 
-    const idsArray = Array.isArray(articleIds) ? articleIds : [articleIds];
-    const pmcEntry = idsArray.find(id => id?.$?.IdType === 'pmc');
+  const idsArray = Array.isArray(articleIds) ? articleIds : [articleIds];
+  const pmcEntry = idsArray.find((id) => id?.$?.IdType === 'pmc');
 
-    // O ID do PMC geralmente começa com 'PMC'
-    return pmcEntry?._?.startsWith('PMC') ? pmcEntry._ : null;
+  // O ID do PMC geralmente começa com 'PMC'
+  return pmcEntry?._?.startsWith('PMC') ? pmcEntry._ : null;
 }
-
 
 // --- Function Implementation (Modificada para buscar PMC link) ---
 /**
@@ -141,8 +141,10 @@ function findPmcId(pubmedArticle) {
  */
 async function fetch_pubmed_details({ pmid }) {
   if (!pmid || typeof pmid !== 'string' || !/^\d+$/.test(pmid)) {
-     console.error(`[PubMed Details Error] Invalid PMID provided: ${pmid}`);
-     return { result: { success: false, pmid: pmid || 'invalid', error: `Invalid PMID format: ${pmid}` } };
+    console.error(`[PubMed Details Error] Invalid PMID provided: ${pmid}`);
+    return {
+      result: { success: false, pmid: pmid || 'invalid', error: `Invalid PMID format: ${pmid}` },
+    };
   }
   console.log(`[PubMed Details] Fetching details for PMID: ${pmid}`);
 
@@ -180,7 +182,7 @@ async function fetch_pubmed_details({ pmid }) {
     const article = pubmedArticle?.MedlineCitation?.Article;
 
     if (!article) {
-        throw new Error(`Could not find article data in EFetch response for PMID ${pmid}`);
+      throw new Error(`Could not find article data in EFetch response for PMID ${pmid}`);
     }
 
     const title = article.ArticleTitle || 'No Title Available';
@@ -188,11 +190,11 @@ async function fetch_pubmed_details({ pmid }) {
     const pmcId = findPmcId(pubmedArticle);
     const pmcUrl = pmcId ? `https://www.ncbi.nlm.nih.gov/pmc/articles/${pmcId}/` : null;
 
-    let fullTextStatus = "Abstract provided.";
+    let fullTextStatus = 'Abstract provided.';
     if (pmcUrl) {
-        fullTextStatus += " Full text likely available via PMC link.";
+      fullTextStatus += ' Full text likely available via PMC link.';
     } else {
-        fullTextStatus += " Full text might be available via publisher link (check main URL).";
+      fullTextStatus += ' Full text might be available via publisher link (check main URL).';
     }
 
     const resultData = {
@@ -203,35 +205,46 @@ async function fetch_pubmed_details({ pmid }) {
       url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
       pmc_url: pmcUrl, // Link para o PMC, se encontrado
       full_text_status: fullTextStatus, // Status sobre o texto completo
-      authors: article.AuthorList?.Author?.map(a => `${a.LastName || ''} ${a.Initials || ''}`.trim()).filter(Boolean) || [],
+      authors:
+        article.AuthorList?.Author?.map((a) =>
+          `${a.LastName || ''} ${a.Initials || ''}`.trim()
+        ).filter(Boolean) || [],
       journal: article.Journal?.Title || article.Journal?.ISOAbbreviation || 'Unknown Journal',
       publication_date: article.Journal?.JournalIssue?.PubDate?.Year || 'Unknown Date',
     };
 
-    console.log(`[PubMed Details] Successfully fetched details for PMID: ${pmid}. PMC available: ${!!pmcUrl}`);
+    console.log(
+      `[PubMed Details] Successfully fetched details for PMID: ${pmid}. PMC available: ${!!pmcUrl}`
+    );
     return { result: resultData };
-
   } catch (error) {
     console.error(`[PubMed Details Error] Fetching/parsing PMID ${pmid}: ${error.message}`);
     console.error(error.stack);
-    return { result: { success: false, pmid: pmid, error: `Error fetching/parsing details for PMID ${pmid}: ${error.message}` } };
+    return {
+      result: {
+        success: false,
+        pmid: pmid,
+        error: `Error fetching/parsing details for PMID ${pmid}: ${error.message}`,
+      },
+    };
   }
 }
 
 // --- Function Declaration (Schema Atualizado) ---
 const fetchPubmedDetailsDeclaration = {
-  name: "fetch_pubmed_details",
-  description: "Busca metadados detalhados e o abstract completo para um ÚNICO artigo do PubMed, usando seu PMID. Também tenta fornecer um link para o texto completo no PubMed Central (PMC), se disponível, mas NÃO retorna o conteúdo do texto completo.",
+  name: 'fetch_pubmed_details',
+  description:
+    'Busca metadados detalhados e o abstract completo para um ÚNICO artigo do PubMed, usando seu PMID. Também tenta fornecer um link para o texto completo no PubMed Central (PMC), se disponível, mas NÃO retorna o conteúdo do texto completo.',
   parameters: {
     type: Type.OBJECT,
     properties: {
       pmid: {
         type: Type.STRING,
-        description: "O PubMed ID (PMID) único do artigo para buscar os detalhes."
-      }
+        description: 'O PubMed ID (PMID) único do artigo para buscar os detalhes.',
+      },
     },
-    required: ["pmid"]
-  }
+    required: ['pmid'],
+  },
 };
 
 // --- Exportações ---

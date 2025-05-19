@@ -2,8 +2,8 @@ import React from 'react';
 import styled from 'styled-components';
 
 const HeaderContainer = styled.header`
-  background-color: ${props => props.theme.colors.background};
-  color: ${props => props.theme.colors.text};
+  background-color: ${(props) => props.theme.colors.background};
+  color: ${(props) => props.theme.colors.text};
   padding: 1rem 1.5rem;
   display: flex;
   align-items: center;
@@ -12,7 +12,7 @@ const HeaderContainer = styled.header`
   position: sticky;
   top: 0;
   z-index: 100;
-  
+
   @media (prefers-color-scheme: dark) {
     background-color: #1a1d21;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -28,7 +28,7 @@ const Logo = styled.div`
 const LogoImage = styled.div`
   width: 32px;
   height: 32px;
-  background-color: ${props => props.theme.colors.primary};
+  background-color: ${(props) => props.theme.colors.primary};
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -41,20 +41,21 @@ const PlusIcon = styled.div`
   position: relative;
   width: 16px;
   height: 16px;
-  
-  &:before, &:after {
+
+  &:before,
+  &:after {
     content: '';
     position: absolute;
     background-color: white;
   }
-  
+
   &:before {
     width: 16px;
     height: 2px;
     top: 7px;
     left: 0;
   }
-  
+
   &:after {
     width: 2px;
     height: 16px;
