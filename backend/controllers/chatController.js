@@ -81,12 +81,21 @@ ${systemInstructionText}`;
     );
 
     // Chamada à API Gemini com o histórico da sessão
-    let result = await generateContent(MODEL, sessionHistory, finalSystemInstructionText, tools);
+    let apiCallResult = await generateContent(MODEL, sessionHistory, finalSystemInstructionText, tools);
 
-    let responseFromModel = result?.response;
+    // VERIFICAR SE HOUVE ERRO RETORNADO PELO geminiService
+    if (apiCallResult && apiCallResult.error) {
+      console.error(`[chatController] Error received from geminiService: ${apiCallResult.error} - Details: ${apiCallResult.details}`);
+      throw new Error(`AI Service Error: ${apiCallResult.details || apiCallResult.error}`);
+    }
 
-    if (!responseFromModel) {
-      throw new Error('Invalid response structure from AI service (call 1). No response object.');
+    // Se não houve erro, apiCallResult É a resposta do modelo Gemini (contendo candidates)
+    let responseFromModel = apiCallResult;
+
+    // Verifica se a estrutura da resposta é válida (deve conter candidates)
+    if (!responseFromModel?.candidates) {
+      console.error('[chatController] Invalid response structure from AI service (expected candidates). Result from geminiService:', JSON.stringify(responseFromModel, null, 2));
+      throw new Error('Invalid response structure from AI service. Missing candidates in response.');
     }
 
     // Inicializar variáveis para o loop de chamadas de função
@@ -188,9 +197,7 @@ ${systemInstructionText}`;
         );
 
         // Nova chamada à API com o histórico atualizado
-        result = await generateContent(MODEL, updatedHistory, finalSystemInstructionText, tools);
-
-        responseFromModel = result?.response;
+        responseFromModel = await generateContent(MODEL, updatedHistory, finalSystemInstructionText, tools);
 
         if (!responseFromModel) {
           throw new Error(
