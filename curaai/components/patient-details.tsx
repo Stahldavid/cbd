@@ -22,6 +22,8 @@ import {
   LucideUserCircle2,
 } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Input } from "@/components/ui/input"; // Added for editable fields
+import { Label } from "@/components/ui/label"; // Added for input labels
 import { usePatient, Patient as PatientFromContext } from "@/contexts/PatientContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -123,59 +125,247 @@ function PatientDetailsSkeleton() {
 }
 
 function PatientProfile({ patient }: PatientSubComponentProps) {
-  const displayName = patient.name || "Selected Patient"
-  const displayDob = patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString('pt-BR') : "Not available"
-  const displayAge = patient.date_of_birth ? (new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear()) : undefined
-  const displayPatientId = `#${patient.id.substring(0,8).toUpperCase()}...`
-  const displayGender = patient.gender || "Not specified"
-  const displayCpfRg = patient.cpf || patient.rg || "Not registered"
-  const displayPhone = patient.phone_number || "Not registered"
-  const displayEmail = patient.email || "Not registered"
+  const { fetchPatients, selectPatient } = usePatient(); // Get context functions
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<Partial<PatientFromContext>>({ ...patient });
+
+  useEffect(() => {
+    // Sync formData when patient prop changes and not in edit mode
+    if (!isEditing) {
+      setFormData({ ...patient });
+    }
+  }, [patient, isEditing]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value || null })); // Set to null if empty string for Supabase
+  };
+  
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target; // value is YYYY-MM-DD
+    setFormData(prev => ({ ...prev, [name]: value || null }));
+  };
+
+
+  const handleEdit = () => {
+    setFormData({ ...patient }); // Ensure form starts with current patient data
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    setFormData({ ...patient }); // Reset changes
+    setIsEditing(false);
+  };
+
+  const handleSave = async () => {
+    if (!patient?.id) {
+      toast.error("Patient ID is missing.");
+      return;
+    }
+
+    // Basic validation example (name is required)
+    if (!formData.name?.trim()) {
+        toast.error("Patient name cannot be empty.");
+        return;
+    }
+    // DOB validation (ensure it's a valid date if provided)
+    if (formData.date_of_birth && isNaN(new Date(formData.date_of_birth).getTime())) {
+        toast.error("Invalid Date of Birth.");
+        return;
+    }
+
+
+    const updateData: Partial<PatientFromContext> & { updated_at: string } = {
+      // Only include fields that are meant to be editable
+      name: formData.name,
+      date_of_birth: formData.date_of_birth ? new Date(formData.date_of_birth).toISOString() : null,
+      gender: formData.gender,
+      cpf: formData.cpf,
+      rg: formData.rg,
+      phone_number: formData.phone_number,
+      email: formData.email,
+      address: formData.address, 
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Remove keys with undefined values to prevent Supabase errors
+    Object.keys(updateData).forEach(key => {
+        const typedKey = key as keyof typeof updateData;
+        if (updateData[typedKey] === undefined) {
+            delete updateData[typedKey];
+        }
+    });
+
+
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .update(updateData)
+        .eq('id', patient.id)
+        .select() // Select the updated row
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        toast.success("Patient profile updated successfully.");
+        await fetchPatients(); // Refresh the entire patient list
+        // Attempt to re-select the patient to update context.
+        // This relies on fetchPatients correctly updating the list that selectPatient uses.
+        selectPatient(data as PatientFromContext); 
+        setFormData(data as PatientFromContext); // Update local form data with saved data
+      }
+      setIsEditing(false);
+    } catch (error: any) {
+      toast.error(`Failed to update patient: ${error.message}`);
+      console.error("Error updating patient:", error);
+    }
+  };
+  
+  // Prepare display values, handling potential null/undefined from formData or patient
+  // When not editing, always use `patient` prop for stable display until save.
+  // When editing, use `formData`.
+  const displayData = isEditing ? formData : patient;
+  
+  const displayName = displayData.name || "Selected Patient";
+  const displayDob = displayData.date_of_birth 
+    ? new Date(displayData.date_of_birth).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) // Ensure UTC for consistency if DOB is stored as ISO string
+    : "Not available";
+  const displayAge = displayData.date_of_birth 
+    ? (new Date().getFullYear() - new Date(displayData.date_of_birth).getFullYear()) 
+    : undefined;
+  const displayPatientId = `#${patient.id.substring(0,8).toUpperCase()}...`; // Original patient ID, should not be editable or change
 
   return (
     <div className="space-y-3">
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center justify-between">
-            <span>Demographics: {displayName}</span>
-            <Button variant="outline" size="icon" className="h-7 w-7">
-              <LucideEdit className="h-3.5 w-3.5" />
-            </Button>
+            {/* Title should reflect the patient being viewed, not editable formData name */}
+            <span>Demographics: {patient.name || "Selected Patient"}</span> 
+            {!isEditing ? (
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={handleEdit}>
+                <LucideEdit className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <TooltipProvider delayDuration={100}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600 hover:text-green-700" onClick={handleSave}>
+                        <LucideCheck className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom"><p>Save Changes</p></TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700" onClick={handleCancel}>
+                        <LucideX className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom"><p>Cancel</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )}
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-sm space-y-2">
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Patient ID</p>
-              <p className="font-mono text-[11px]">{displayPatientId}</p>
+        <CardContent className="text-sm space-y-3">
+          {isEditing ? (
+            <>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+                <div>
+                  <Label htmlFor="name" className="text-xs">Name</Label>
+                  <Input type="text" name="name" id="name" value={formData.name || ''} onChange={handleInputChange} className="h-8 text-xs" />
+                </div>
+                <div>
+                  <Label htmlFor="date_of_birth" className="text-xs">Date of Birth</Label>
+                  <Input 
+                    type="date" name="date_of_birth" id="date_of_birth" 
+                    // Ensure date is formatted as YYYY-MM-DD for input type="date"
+                    value={formData.date_of_birth ? formData.date_of_birth.split('T')[0] : ''} 
+                    onChange={handleDateChange} className="h-8 text-xs" 
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="gender" className="text-xs">Gender</Label>
+                  <Input type="text" name="gender" id="gender" value={formData.gender || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="e.g., Male, Female, Other" />
+                </div>
+                <div>
+                  <Label htmlFor="cpf" className="text-xs">CPF</Label>
+                  <Input type="text" name="cpf" id="cpf" value={formData.cpf || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="000.000.000-00"/>
+                </div>
+                <div>
+                  <Label htmlFor="rg" className="text-xs">RG</Label>
+                  <Input type="text" name="rg" id="rg" value={formData.rg || ''} onChange={handleInputChange} className="h-8 text-xs" />
+                </div>
+                <div>
+                  <Label htmlFor="phone_number" className="text-xs">Phone</Label>
+                  <Input type="tel" name="phone_number" id="phone_number" value={formData.phone_number || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="(XX) XXXXX-XXXX"/>
+                </div>
+                <div className="col-span-2">
+                  <Label htmlFor="email" className="text-xs">Email</Label>
+                  <Input type="email" name="email" id="email" value={formData.email || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="patient@example.com"/>
+                </div>
+                 <div className="col-span-2">
+                  <Label htmlFor="address" className="text-xs">Address</Label>
+                  <Input type="text" name="address" id="address" value={formData.address || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="Street, Number, City, State"/>
+                </div>
+              </div>
+            </>
+          ) : (
+            // View Mode - uses `displayData` which points to `patient` prop
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+              <div>
+                <p className="text-muted-foreground text-xs font-medium">Patient ID</p>
+                <p className="font-mono text-[11px]">{displayPatientId}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs font-medium">Name</p>
+                <p>{patient.name || "Not registered"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs font-medium">Date of Birth</p>
+                <p>{(patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : "Not available")} {displayAge !== undefined && `(${displayAge} y/o)`}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs font-medium">Gender</p>
+                <p>{patient.gender || "Not specified"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs font-medium">CPF</p>
+                <p>{patient.cpf || "Not registered"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs font-medium">RG</p>
+                <p>{patient.rg || "Not registered"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs font-medium">Phone</p>
+                <p>{patient.phone_number || "Not registered"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs font-medium">Email</p>
+                <p>{patient.email || "Not registered"}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-muted-foreground text-xs font-medium">Address</p>
+                <p>{patient.address || "Not registered"}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Date of Birth</p>
-              <p>{displayDob} {displayAge !== undefined && `(${displayAge} y/o)`}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Gender</p>
-              <p>{displayGender}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">CPF/RG</p>
-              <p>{displayCpfRg}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Phone</p>
-              <p>{displayPhone}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Email</p>
-              <p>{displayEmail}</p>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground pt-1 italic">Further patient profile details (conditions, medications, allergies) will be populated from actual patient data.</p>
+          )}
+          {!isEditing && (
+            <p className="text-xs text-muted-foreground pt-1 italic">Allergies, conditions, and other medical data are managed in their respective sections.</p>
+          )}
         </CardContent>
       </Card>
-      <Card><CardHeader><CardTitle className="text-base font-semibold">Medical Conditions</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground italic">Data for {displayName} not yet linked.</p></CardContent></Card>
-      <Card><CardHeader><CardTitle className="text-base font-semibold">Current Medications</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground italic">Data for {displayName} not yet linked.</p></CardContent></Card>
-      <Card className="border-destructive/30"><CardHeader className="text-destructive"><CardTitle className="text-base font-semibold flex items-center gap-1.5"><LucideAlertCircle className="h-4 w-4" />Allergies</CardTitle></CardHeader><CardContent className="bg-destructive/5"><p className="text-xs text-muted-foreground italic">Data for {displayName} not yet linked.</p></CardContent></Card>
+      {/* Other cards remain unchanged for now, but could also become editable */}
+      <Card><CardHeader><CardTitle className="text-base font-semibold">Medical Conditions</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground italic">Data for {patient.name || "Selected Patient"} not yet linked.</p></CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base font-semibold">Current Medications</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground italic">Data for {patient.name || "Selected Patient"} not yet linked.</p></CardContent></Card>
+      <Card className="border-destructive/30"><CardHeader className="text-destructive"><CardTitle className="text-base font-semibold flex items-center gap-1.5"><LucideAlertCircle className="h-4 w-4" />Allergies</CardTitle></CardHeader><CardContent className="bg-destructive/5"><p className="text-xs text-muted-foreground italic">Data for {patient.name || "Selected Patient"} not yet linked.</p></CardContent></Card>
     </div>
   )
 }

@@ -145,19 +145,73 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
   // Function to end the current consultation
   const endCurrentConsultation = useCallback(async () => {
     if (!currentConsultationId) return;
+
+    const consultationIdToEnd = currentConsultationId; // Store it before it's cleared
+
     try {
-      const { error } = await supabase
+      // Step 1: Mark consultation end_time in Supabase
+      const { error: updateError } = await supabase
         .from('consultations')
         .update({ end_time: new Date().toISOString() })
-        .eq('id', currentConsultationId);
-      if (error) {
-        toast.error(`Failed to end consultation: ${error.message}`);
-        throw error;
+        .eq('id', consultationIdToEnd);
+
+      if (updateError) {
+        toast.error(`Failed to update consultation end time: ${updateError.message}`);
+        // Do not throw here, try to proceed with summary if desired or allow manual retry
+        // Depending on desired behavior, you might still want to clear currentConsultationId or not
+      } else {
+        toast.success("Consultation end time marked.");
       }
-      toast.info("Consultation ended.");
-      setCurrentConsultationId(null);
-    } catch (error: any) {
+
+      // Step 2: Attempt to generate AI summary (after end_time is set)
+      // Use NEXT_PUBLIC_API_URL which should be defined in your .env files
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api"; 
+      const summaryUrl = `${API_BASE_URL}/consultations/${consultationIdToEnd}/generate-summary`;
+      
+      toast.info("Generating consultation summary...");
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          throw new Error("Authentication session not found. Cannot generate summary.");
+        }
+
+        const response = await fetch(summaryUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: "Unknown error during summary generation." }));
+          throw new Error(errorData.message || `Failed to generate summary (status ${response.status})`);
+        }
+        
+        const summaryResult = await response.json();
+        toast.success(summaryResult.message || "Consultation summary generated successfully.");
+        // Optionally, do something with summaryResult.summary if needed in frontend
+
+      } catch (summaryError: any) {
+        console.error("Error generating consultation summary:", summaryError);
+        toast.error(`Summary generation failed: ${summaryError.message}`);
+        // This error does not prevent the consultation from being considered "ended" locally
+      }
+
+      // Step 3: Clear the current consultation ID from context state
+      // This signifies the consultation is fully "done" from the app's perspective.
+      setCurrentConsultationId(null); 
+      // The original toast.info("Consultation ended.") might be redundant now with more specific toasts.
+      // Or, it can be a final confirmation.
+      toast.info("Consultation process completed.");
+
+
+    } catch (error: any) { // Catch errors from Step 1 (marking end_time) if they were re-thrown
       console.error("Error ending consultation:", error);
+      // If marking end_time failed catastrophically, currentConsultationId might still be set,
+      // allowing the user to retry ending it. Or, clear it to prevent repeated issues.
+      // For now, let's assume if Step 1 fails hard, we don't clear it, prompting a potential retry.
+      // However, the current flow only toasts the error from Step 1 and proceeds.
     }
   }, [currentConsultationId]);
 
