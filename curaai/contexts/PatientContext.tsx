@@ -123,14 +123,18 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
 
       let compiledHistory = "";
       if (consultationSummaries && consultationSummaries.length > 0) {
-        compiledHistory += "Histórico de Consultas Anteriores do Paciente:\\n";
+        // Use Markdown H2 for the main title and ensure double newlines
+        compiledHistory += "## Histórico de Consultas Anteriores do Paciente\n\n";
         consultationSummaries.forEach(consult => {
           const dateString = consult.end_time ? new Date(consult.end_time).toLocaleString() : (consult.start_time ? new Date(consult.start_time).toLocaleString() + " (em andamento ou não finalizada)" : "Data desconhecida");
-          compiledHistory += `\\n--- Consulta de: ${dateString} ---\\n`;
-          compiledHistory += `${consult.ai_summary}\\n`;
+          // Use a thematic break (---) and make the date bold. Ensure newlines for proper spacing.
+          compiledHistory += `\n\n---\n\n**Consulta de:** ${dateString}\n\n`;
+          // Ensure the AI summary is treated as a separate block of text, followed by newlines
+          compiledHistory += `${consult.ai_summary || "Nenhum resumo disponível para esta consulta."}\n\n`;
         });
       } else {
-        compiledHistory = "Nenhum sumário de consulta anterior encontrado para este paciente.\\n";
+        // Keep this as plain text, or style as a specific Markdown element if preferred
+        compiledHistory = "Nenhum sumário de consulta anterior encontrado para este paciente.\n";
       }
 
       // TODO: Fetch and append other medical notes if they exist from another table
