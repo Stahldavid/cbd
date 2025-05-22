@@ -9,9 +9,9 @@ interface AuthContextProps {
   session: Session | null;
   loading: boolean;
   doctorId: string | null; // Assuming doctorId is the user.id
-  signInWithPassword: typeof supabase.auth.signInWithPassword;
-  signUpWithPassword: typeof supabase.auth.signUp;
-  signOut: typeof supabase.auth.signOut;
+  signInWithPassword: (credentials: { email: string; password: string }) => Promise<any>;
+  signUpWithPassword: (credentials: { email: string; password: string; options?: any }) => Promise<any>;
+  signOut: () => Promise<any>;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
@@ -28,14 +28,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   useEffect(() => {
     const getInitialSession = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error("Error getting initial session:", error);
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("Error getting initial session:", error);
+        }
+        setSession(session);
+        setUser(session?.user ?? null);
+        setDoctorId(session?.user?.id ?? null);
+      } catch (error) {
+        console.error("Error in getInitialSession:", error);
+      } finally {
+        setLoading(false);
       }
-      setSession(session);
-      setUser(session?.user ?? null);
-      setDoctorId(session?.user?.id ?? null);
-      setLoading(false);
     };
 
     getInitialSession();
@@ -50,18 +55,49 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     );
 
     return () => {
-      authListener?.unsubscribe();
+      authListener?.subscription?.unsubscribe();
     };
   }, []);
+
+  // Wrapper functions for better error handling
+  const signInWithPassword = async (credentials: { email: string; password: string }) => {
+    try {
+      const result = await supabase.auth.signInWithPassword(credentials);
+      return result;
+    } catch (error) {
+      console.error("Error in signInWithPassword:", error);
+      throw error;
+    }
+  };
+
+  const signUpWithPassword = async (credentials: { email: string; password: string; options?: any }) => {
+    try {
+      const result = await supabase.auth.signUp(credentials);
+      return result;
+    } catch (error) {
+      console.error("Error in signUpWithPassword:", error);
+      throw error;
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      const result = await supabase.auth.signOut();
+      return result;
+    } catch (error) {
+      console.error("Error in signOut:", error);
+      throw error;
+    }
+  };
 
   const value = {
     user,
     session,
     loading,
     doctorId,
-    signInWithPassword: supabase.auth.signInWithPassword,
-    signUpWithPassword: supabase.auth.signUp, // This is actually supabase.auth.signUp
-    signOut: supabase.auth.signOut,
+    signInWithPassword,
+    signUpWithPassword,
+    signOut,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -73,4 +109,4 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}; 
+};

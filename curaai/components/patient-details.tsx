@@ -76,7 +76,7 @@ export function PatientDetails() {
   }
 
   return (
-    <div className="w-[30%] min-w-[350px] max-w-[450px] h-[calc(100vh-60px)] overflow-hidden bg-background flex flex-col border-l border-border">
+    <div className="w-[30%] min-w-[350px] max-w-[450px] h-[calc(100vh-60px)] bg-background flex flex-col border-l border-border">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         <div className="px-3 pt-3 border-b border-border sticky top-0 bg-background z-10">
           <TabsList className="grid w-full grid-cols-4 h-9">
@@ -87,7 +87,7 @@ export function PatientDetails() {
           </TabsList>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1" type="auto">
           <div className="p-3 space-y-3">
             <TabsContent value="profile" className="mt-0">
               <PatientProfile patient={activePatient} />
@@ -113,7 +113,7 @@ export function PatientDetails() {
 
 function PatientDetailsSkeleton() {
   return (
-    <div className="w-[30%] min-w-[350px] max-w-[450px] h-[calc(100vh-60px)] overflow-hidden bg-background flex flex-col border-l border-border p-3 space-y-3">
+    <div className="w-[30%] min-w-[350px] max-w-[450px] h-[calc(100vh-60px)] bg-background flex flex-col border-l border-border p-3 space-y-3">
       <div className="grid grid-cols-4 gap-2 px-1 pt-1 mb-1">
         {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-md" />)}
       </div>
@@ -511,7 +511,8 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
               <p className="text-xs text-muted-foreground">Loading notes...</p>
             </div>
           ) : previousNotes.length > 0 ? (
-            <ScrollArea className="h-[calc(100vh-380px)] space-y-2 pr-1">
+            <ScrollArea className="h-[300px]" type="auto">
+              <div className="space-y-2 pr-1">
               {previousNotes.map((note) => (
                 <Card key={note.id} className="mb-2 shadow-sm bg-muted/20 hover:bg-muted/30 transition-colors duration-150 rounded-lg">
                   <CardHeader className="pb-1 pt-1.5 px-2.5">
@@ -530,6 +531,7 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
                   </CardContent>
                 </Card>
               ))}
+              </div>
             </ScrollArea>
           ) : (
             <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
