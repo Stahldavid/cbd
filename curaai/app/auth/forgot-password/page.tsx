@@ -2,8 +2,9 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,17 +24,24 @@ export default function ForgotPasswordPage() {
     setIsLoading(true)
 
     try {
+      console.log("Sending password reset email for:", email)
+      
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/reset-password`,
       })
 
+      console.log("Password reset email result:", { error })
+
       if (error) {
+        console.error("Password reset email error:", error)
         toast.error(error.message || "Erro ao enviar e-mail de recuperação.")
       } else {
+        console.log("Password reset email sent successfully")
         setIsSubmitted(true)
         toast.success("E-mail de recuperação enviado!")
       }
     } catch (err: any) {
+      console.error("Password reset email exception:", err)
       toast.error(err.message || "Ocorreu um erro inesperado.")
     } finally {
       setIsLoading(false)
@@ -62,6 +70,9 @@ export default function ForgotPasswordPage() {
                 <p className="text-sm text-muted-foreground">
                   Enviamos um link de recuperação para <span className="font-medium">{email}</span>. Por favor,
                   verifique sua caixa de entrada e spam.
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  O link expira em 1 hora por motivos de segurança.
                 </p>
               </div>
               <div className="text-sm text-muted-foreground mt-4">
