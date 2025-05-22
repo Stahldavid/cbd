@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -113,7 +113,47 @@ export function PrescriptionForm() {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   
   // Get suggestions from prescription context
-  const { suggestions } = usePrescription();
+  const {
+    suggestions,
+    latestAiFilledPrescription,
+    registerApplyToFormCallback,
+    consumeLatestAiFilledPrescription
+  } = usePrescription();
+
+  // Function to apply data (from AI or suggestion list) to the form
+  const applyDataToForm = useCallback((dataToApply: PrescriptionSuggestion | Partial<PrescriptionData>) => {
+    if (!dataToApply) return;
+
+    setPrescriptionData(prev => ({
+      ...prev,
+      productDetails: dataToApply.productDetails || prev.productDetails,
+      dosageInstruction: dataToApply.dosageInstruction || prev.dosageInstruction,
+      justification: dataToApply.justification || prev.justification,
+      usageType: dataToApply.usageType || prev.usageType,
+      isContinuousUse: dataToApply.isContinuousUse !== undefined ? dataToApply.isContinuousUse : prev.isContinuousUse,
+      // Patient details are usually from activePatient, AI might not always provide them
+      // Only update if AI explicitly provides them and it's desired.
+      // patientName: dataToApply.patientName || prev.patientName,
+      // ... etc for other patient fields
+    }));
+
+    // Do not show toast here if called by AI auto-fill,
+    // as the context will show a more global toast.
+    // If called manually from suggestion list, a toast here might be ok.
+  }, []);
+
+  // Register the callback with the context and handle initial AI-filled prescription
+  useEffect(() => {
+    registerApplyToFormCallback(applyDataToForm);
+  }, [registerApplyToFormCallback, applyDataToForm]);
+
+  // Effect to react to latestAiFilledPrescription from context
+  useEffect(() => {
+    if (latestAiFilledPrescription) {
+      applyDataToForm(latestAiFilledPrescription);
+      consumeLatestAiFilledPrescription(); // Important: Mark as consumed
+    }
+  }, [latestAiFilledPrescription, applyDataToForm, consumeLatestAiFilledPrescription]);
 
   // Update form with active patient data
   useEffect(() => {
@@ -126,6 +166,13 @@ export function PrescriptionForm() {
         patientDOB: activePatient.date_of_birth || '',
         patientAge: activePatient.date_of_birth ? calculateAge(activePatient.date_of_birth) : '',
         patientAddress: activePatient.address || '',
+      }));
+    } else {
+      // Clear patient fields if no active patient, but keep prescription details
+      setPrescriptionData(prev => ({
+        ...prev,
+        patientName: '', patientRG: '', patientCPF: '',
+        patientDOB: '', patientAge: '', patientAddress: '',
       }));
     }
   }, [activePatient]);
@@ -212,22 +259,11 @@ export function PrescriptionForm() {
     }
   };
   
-  // Apply AI-generated prescription
-  const applyPrescription = (generatedData: any) => {
-    if (!generatedData) return;
-    
-    setPrescriptionData(prev => ({
-      ...prev,
-      productDetails: generatedData.productDetails || prev.productDetails,
-      dosageInstruction: generatedData.dosageInstruction || prev.dosageInstruction,
-      justification: generatedData.justification || prev.justification,
-      usageType: generatedData.usageType || prev.usageType,
-      isContinuousUse: generatedData.isContinuousUse ?? prev.isContinuousUse
-    }));
-    
+  const applySuggestionFromList = (suggestion: PrescriptionSuggestion) => {
+    applyDataToForm(suggestion);
     toast({
-      title: "Prescrição aplicada",
-      description: "Os detalhes da prescrição foram atualizados conforme recomendado pelo assistente.",
+      title: "Sugestão aplicada",
+      description: "Os detalhes da prescrição foram atualizados a partir da sugestão.",
     });
   };
 
@@ -254,7 +290,7 @@ export function PrescriptionForm() {
                     value={prescriptionData.patientName}
                     onChange={handleInputChange}
                     readOnly={!!activePatient}
-                    className={activePatient ? "bg-muted" : ""}
+                    className={activePatient ? "bg-muted cursor-not-allowed" : ""}
                   />
                 </div>
                 <div className="space-y-2">
@@ -265,7 +301,7 @@ export function PrescriptionForm() {
                     value={prescriptionData.patientRG}
                     onChange={handleInputChange}
                     readOnly={!!activePatient}
-                    className={activePatient ? "bg-muted" : ""}
+                    className={activePatient ? "bg-muted cursor-not-allowed" : ""}
                   />
                 </div>
                 <div className="space-y-2">
@@ -276,7 +312,7 @@ export function PrescriptionForm() {
                     value={prescriptionData.patientCPF}
                     onChange={handleInputChange}
                     readOnly={!!activePatient}
-                    className={activePatient ? "bg-muted" : ""}
+                    className={activePatient ? "bg-muted cursor-not-allowed" : ""}
                   />
                 </div>
                 <div className="space-y-2">
@@ -288,7 +324,7 @@ export function PrescriptionForm() {
                     value={prescriptionData.patientDOB ? prescriptionData.patientDOB.split('T')[0] : ''}
                     onChange={handleInputChange}
                     readOnly={!!activePatient}
-                    className={activePatient ? "bg-muted" : ""}
+                    className={activePatient ? "bg-muted cursor-not-allowed" : ""}
                   />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
@@ -299,7 +335,7 @@ export function PrescriptionForm() {
                     value={prescriptionData.patientAddress}
                     onChange={handleInputChange}
                     readOnly={!!activePatient}
-                    className={activePatient ? "bg-muted" : ""}
+                    className={activePatient ? "bg-muted cursor-not-allowed" : ""}
                   />
                 </div>
               </div>
@@ -404,23 +440,23 @@ export function PrescriptionForm() {
           <CardContent className="space-y-4">
             <div 
               ref={prescriptionRef} 
-              className="border border-border rounded-lg p-6 bg-white text-black"
+              className="border border-border rounded-lg p-6 bg-white text-black text-sm"
             >
               <div className="text-center mb-6">
-                <h2 className="text-xl font-bold">RECEITUÁRIO MÉDICO</h2>
-                <p className="text-sm text-gray-600">(Receita médica simples branca)</p>
+                <h2 className="text-lg font-bold">RECEITUÁRIO MÉDICO</h2>
+                <p className="text-xs text-gray-500">(Receita médica simples branca)</p>
               </div>
 
               {/* Patient Section */}
               <div className="mb-6 pb-4 border-b border-gray-200">
-                <h4 className="text-sm font-semibold uppercase text-blue-600 mb-2">Paciente</h4>
+                <h4 className="text-xs font-semibold uppercase text-blue-600 mb-1.5">Paciente</h4>
                 
-                <div className="grid grid-cols-[120px_1fr] gap-y-1 text-sm">
+                <div className="grid grid-cols-[100px_1fr] gap-y-0.5 text-xs">
                   <span className="font-medium text-gray-600">Nome:</span>
-                  <span>{prescriptionData.patientName || '____________________'}</span>
+                  <span>{prescriptionData.patientName || 'N/A'}</span>
                   
                   <span className="font-medium text-gray-600">RG:</span>
-                  <span>{prescriptionData.patientRG || '____________________'}</span>
+                  <span>{prescriptionData.patientRG || 'N/A'}</span>
                   
                   {prescriptionData.patientCPF && (
                     <>
@@ -432,12 +468,12 @@ export function PrescriptionForm() {
                   <span className="font-medium text-gray-600">Data de Nasc.:</span>
                   <span>
                     {prescriptionData.patientDOB
-                      ? new Date(prescriptionData.patientDOB).toLocaleDateString('pt-BR')
-                      : '____/____/____'}
+                      ? new Date(prescriptionData.patientDOB + 'T00:00:00').toLocaleDateString('pt-BR')
+                      : 'N/A'}
                   </span>
                   
                   <span className="font-medium text-gray-600">Idade:</span>
-                  <span>{prescriptionData.patientAge || '____________________'}</span>
+                  <span>{prescriptionData.patientAge || 'N/A'}</span>
                   
                   {prescriptionData.patientAddress && (
                     <>
@@ -450,20 +486,20 @@ export function PrescriptionForm() {
 
               {/* Prescription Section */}
               <div className="mb-6 pb-4 border-b border-gray-200">
-                <h4 className="text-sm font-semibold uppercase text-blue-600 mb-2">Prescrição</h4>
+                <h4 className="text-xs font-semibold uppercase text-blue-600 mb-1.5">Prescrição</h4>
                 
-                <div className="grid grid-cols-[120px_1fr] gap-y-1 text-sm">
+                <div className="grid grid-cols-[100px_1fr] gap-y-0.5 text-xs">
                   <span className="font-medium text-gray-600">Produto:</span>
-                  <span className="font-bold">{prescriptionData.productDetails || '____________________'}</span>
+                  <span className="font-bold">{prescriptionData.productDetails || 'N/A'}</span>
                   
                   <span className="font-medium text-gray-600">Tipo de Uso:</span>
                   <span>
-                    {prescriptionData.usageType || 'USO ORAL'}
+                    {prescriptionData.usageType || 'N/A'}
                     {prescriptionData.isContinuousUse ? ' (Uso Contínuo)' : ''}
                   </span>
                   
                   <span className="font-medium text-gray-600">Posologia:</span>
-                  <span className="whitespace-pre-wrap">{prescriptionData.dosageInstruction || '____________________'}</span>
+                  <span className="whitespace-pre-wrap">{prescriptionData.dosageInstruction || 'N/A'}</span>
                   
                   {prescriptionData.justification && (
                     <>
@@ -475,21 +511,21 @@ export function PrescriptionForm() {
               </div>
 
               {/* Footer Section */}
-              <div className="text-center">
-                <p className="text-sm text-gray-600">
+              <div className="text-center mt-8">
+                <p className="text-xs text-gray-500">
                   Data de Emissão: {prescriptionData.emissionDate}
                 </p>
                 
-                <div className="border-t border-gray-500 w-3/5 mx-auto mt-10 mb-2"></div>
+                <div className="border-t border-gray-400 w-3/5 mx-auto mt-8 mb-1.5"></div>
                 
-                <p className="font-bold">
+                <p className="text-xs font-medium">
                   {doctorSettings.name}<br />
                   {doctorSettings.specialty && `${doctorSettings.specialty} - `}
                   CRM: {doctorSettings.crm}
                 </p>
                 
                 {(doctorSettings.address || doctorSettings.phone) && (
-                  <p className="text-xs text-gray-600 mt-1">
+                  <p className="text-[10px] text-gray-500 mt-0.5">
                     {doctorSettings.address}
                     {doctorSettings.address && doctorSettings.phone ? ' - ' : ''}
                     {doctorSettings.phone}
@@ -546,19 +582,17 @@ export function PrescriptionForm() {
           <div className="space-y-2">
             {suggestions.length > 0 ? (
               suggestions.map((suggestion) => (
-                <div key={suggestion.id} className="bg-muted/30 rounded-lg p-4 space-y-2">
+                <div key={suggestion.id} className="bg-muted/30 rounded-lg p-3 space-y-1.5">
                   <div className="flex justify-between items-start">
                     <div>
                       <h4 className="text-sm font-medium">{suggestion.productDetails}</h4>
                       <p className="text-xs text-muted-foreground">{suggestion.dosageInstruction}</p>
                       {suggestion.justification && (
                         <p className="text-xs mt-1 text-muted-foreground italic">
-                          Justificativa: {suggestion.justification.length > 100 
-                            ? suggestion.justification.substring(0, 100) + '...' 
-                            : suggestion.justification}
+                          Justificativa: {suggestion.justification.length > 80 ? suggestion.justification.substring(0, 80) + '...' : suggestion.justification}
                         </p>
                       )}
-                      <p className="text-xs mt-1 text-muted-foreground">
+                      <p className="text-[10px] mt-1 text-muted-foreground">
                         Sugerido em: {new Date(suggestion.timestamp).toLocaleString()}
                       </p>
                     </div>
@@ -567,10 +601,10 @@ export function PrescriptionForm() {
                         size="sm" 
                         variant="ghost"
                         onClick={() => {
-                          applyPrescription(suggestion);
+                          applySuggestionFromList(suggestion);
                         }}
                       >
-                        <LucideArrowRight className="h-4 w-4 mr-1" />
+                        <LucideArrowRight className="h-3.5 w-3.5 mr-1" />
                         Aplicar
                       </Button>
                     </div>
@@ -578,6 +612,34 @@ export function PrescriptionForm() {
                 </div>
               ))
             ) : (
+              <div className="bg-muted/30 rounded-lg p-3 text-center">
+                <p className="text-sm text-muted-foreground">Nenhuma sugestão do assistente ainda.</p>
+                <Button
+                  size="sm"
+                  variant="link"
+                  className="mt-2"
+                  onClick={() => {
+                    applySuggestionFromList({
+                      id: 'demo-id', timestamp: new Date(Date.now()), productDetails: "CBD Isolado CURA CANNABIS",
+                      dosageInstruction: "Tomar 5 gotas, 2 vezes ao dia.",
+                      justification: "Exemplo de justificativa para demonstração.",
+                      usageType: "USO SUBLINGUAL", isContinuousUse: true
+                    });
+                  }}
+                >
+                  Aplicar Exemplo
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+export default PrescriptionForm;
+
               <div className="bg-muted/30 rounded-lg p-4 space-y-2">
                 <div className="flex justify-between items-start">
                   <div>

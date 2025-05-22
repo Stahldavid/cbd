@@ -22,13 +22,14 @@ import {
   LucideUserCircle2,
 } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Input } from "@/components/ui/input"; // Added for editable fields
-import { Label } from "@/components/ui/label"; // Added for input labels
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { usePatient, Patient as PatientFromContext } from "@/contexts/PatientContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from 'sonner'
 import { PrescriptionTab } from "@/components/PrescriptionTab"
+import { useTabStore } from "@/lib/tabStore"
 
 interface Doctor {
   name: string;
@@ -56,7 +57,7 @@ interface PrescriptionTabProps extends PatientSubComponentProps {
 }
 
 export function PatientDetails() {
-  const [activeUITab, setActiveUITab] = useState("profile")
+  const { activeTab, setActiveTab } = useTabStore();
   const { activePatient, isLoadingPatients } = usePatient()
   const { doctorId, loading: authLoading } = useAuth()
 
@@ -76,12 +77,12 @@ export function PatientDetails() {
 
   return (
     <div className="w-[30%] min-w-[350px] max-w-[450px] h-[calc(100vh-60px)] overflow-hidden bg-background flex flex-col border-l border-border">
-      <Tabs value={activeUITab} onValueChange={setActiveUITab} className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         <div className="px-3 pt-3 border-b border-border sticky top-0 bg-background z-10">
           <TabsList className="grid w-full grid-cols-4 h-9">
             <TabsTrigger value="profile" className="text-xs px-2">Profile</TabsTrigger>
             <TabsTrigger value="history" className="text-xs px-2">History</TabsTrigger>
-            <TabsTrigger value="prescriptions" className="text-xs px-2">Prescriptions</TabsTrigger>
+            <TabsTrigger value="prescriptions" className="text-xs px-2" data-tab="prescription">Prescriptions</TabsTrigger>
             <TabsTrigger value="notes" className="text-xs px-2">Notes</TabsTrigger>
           </TabsList>
         </div>
@@ -178,7 +179,7 @@ function PatientProfile({ patient }: PatientSubComponentProps) {
     const updateData: Partial<PatientFromContext> & { updated_at: string } = {
       // Only include fields that are meant to be editable
       name: formData.name,
-      date_of_birth: formData.date_of_birth ? new Date(formData.date_of_birth).toISOString() : null,
+      date_of_birth: formData.date_of_birth ? new Date(formData.date_of_birth).toISOString() : undefined,
       gender: formData.gender,
       cpf: formData.cpf,
       rg: formData.rg,
@@ -373,7 +374,7 @@ function PatientProfile({ patient }: PatientSubComponentProps) {
 function PatientHistory({ patient }: PatientSubComponentProps) {
   return (
     <Card>
-      <CardHeader><CardTitle  className="text-base font-semibold">Consultation History: {patient.name || "Selected Patient"}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="text-base font-semibold">Consultation History: {patient.name || "Selected Patient"}</CardTitle></CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground italic">Full history for patient ID {patient.id.substring(0,8)}... will be implemented here.</p>
       </CardContent>
@@ -392,7 +393,7 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
     if (!activePatient?.id) return
     setIsLoadingPrevious(true)
     try {
-      const { data, error } = await supabase
+      const { data: rawData, error } = await supabase
         .from('medical_records')
         .select('id, record_date, note_content, doctor_id, doctors ( name )')
         .eq('patient_id', activePatient.id)
@@ -402,7 +403,14 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
         toast.error(`Failed to fetch notes: ${error.message}`)
         throw error
       }
-      setPreviousNotes((data as MedicalRecord[]) || [])
+      
+      const formattedData = rawData?.map(record => ({
+        ...record,
+        doctors: record.doctors && Array.isArray(record.doctors) && record.doctors.length > 0 
+                   ? record.doctors[0] 
+                   : (record.doctors && !Array.isArray(record.doctors) ? record.doctors : null)
+      })) || [];
+      setPreviousNotes(formattedData as MedicalRecord[]);
     } catch (error: any) {
       console.error('Error fetching previous notes:', error)
       // Toast is already shown if error is thrown from try block
@@ -433,7 +441,7 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
 
     setIsSaving(true)
     try {
-      const { data, error } = await supabase
+      const { data: rawData, error } = await supabase
         .from('medical_records')
         .insert({
           patient_id: activePatient.id,
@@ -448,8 +456,14 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
         throw error
       }
 
-      if (data) {
-        setPreviousNotes((prev) => [data as MedicalRecord, ...prev].sort((a, b) => new Date(b.record_date).getTime() - new Date(a.record_date).getTime()))
+      if (rawData) {
+        const formattedData = {
+            ...rawData,
+            doctors: rawData.doctors && Array.isArray(rawData.doctors) && rawData.doctors.length > 0 
+                       ? rawData.doctors[0] 
+                       : (rawData.doctors && !Array.isArray(rawData.doctors) ? rawData.doctors : null)
+        };
+        setPreviousNotes((prev) => [formattedData as MedicalRecord, ...prev].sort((a, b) => new Date(b.record_date).getTime() - new Date(a.record_date).getTime()))
         toast.success('Note saved successfully!')
       }
       setCurrentNote('')
@@ -495,7 +509,7 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
             <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
               <LucideFileText className="h-7 w-7 text-muted-foreground/80 mb-2 animate-pulse" />
               <p className="text-xs text-muted-foreground">Loading notes...</p>
-        </div>
+            </div>
           ) : previousNotes.length > 0 ? (
             <ScrollArea className="h-[calc(100vh-380px)] space-y-2 pr-1">
               {previousNotes.map((note) => (
@@ -509,7 +523,7 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
                         })}
                       </span>
                       <span className="font-semibold">Dr. {note.doctors?.name || "Unknown"}</span>
-      </div>
+                    </div>
                   </CardHeader>
                   <CardContent className="text-xs px-2.5 pb-2">
                     <p className="whitespace-pre-wrap leading-relaxed text-foreground/90">{note.note_content}</p>
@@ -527,4 +541,5 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
       </Tabs>
     </div>
   )
-}
+} 
+ 

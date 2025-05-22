@@ -30,6 +30,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { usePatient } from "@/contexts/PatientContext"
 import { supabase } from "@/lib/supabaseClient" 
 import { toast } from "sonner"
+import { PrescriptionProcessor } from "@/lib/prescriptionContext"
 
 // Backend URLs
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
@@ -635,6 +636,9 @@ export function ConsultationChat() {
       {/* Chat messages */}
       <ScrollArea className="flex-1 p-4 bg-gray-50"> {/* Changed background */}
         <div className="space-y-4 max-w-3xl mx-auto pb-4"> {/* Added pb-4 */}
+          {/* Prescription Processor to monitor function results */}
+          <PrescriptionProcessor messages={messages} />
+          
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message} userEmail={user?.email} />
           ))}

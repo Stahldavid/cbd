@@ -49,24 +49,50 @@ export function usePrescriptionSuggestions() {
  * Process fill_prescription tool responses from the AI
  */
 export function processFillPrescriptionResult(functionData: any): Omit<PrescriptionSuggestion, 'id' | 'timestamp'> | null {
-  if (!functionData || !functionData.result || !functionData.result.filledData) {
-    console.error("Invalid fill_prescription result format", functionData);
+  console.log("[processFillPrescriptionResult] Raw functionData:", functionData);
+  
+  // Try different possible data structures
+  let data = null;
+  
+  // Check for result.filledData structure
+  if (functionData?.result?.filledData) {
+    data = functionData.result.filledData;
+  }
+  // Check for direct result structure
+  else if (functionData?.result && typeof functionData.result === 'object') {
+    data = functionData.result;
+  }
+  // Check if functionData itself contains the prescription data
+  else if (functionData?.productDetails || functionData?.productInfo) {
+    data = functionData;
+  }
+  
+  if (!data) {
+    console.error("[processFillPrescriptionResult] Could not find prescription data in:", functionData);
     return null;
   }
   
-  const { productDetails, dosageInstruction, justification, usageType, isContinuousUse } = functionData.result.filledData;
+  console.log("[processFillPrescriptionResult] Found data:", data);
+  
+  // Handle both productDetails and productInfo field names
+  const productDetails = data.productDetails || data.productInfo;
+  const { dosageInstruction, justification, usageType, isContinuousUse } = data;
   
   // Validate required fields
   if (!productDetails || !dosageInstruction) {
-    console.error("Missing required prescription fields", functionData.result.filledData);
+    console.error("[processFillPrescriptionResult] Missing required fields. productDetails:", productDetails, "dosageInstruction:", dosageInstruction);
     return null;
   }
   
-  return {
+  const result = {
     productDetails, 
     dosageInstruction, 
     justification: justification || "",
     usageType: usageType || "USO ORAL",
     isContinuousUse: !!isContinuousUse
   };
+  
+  console.log("[processFillPrescriptionResult] Returning processed data:", result);
+  
+  return result;
 }
