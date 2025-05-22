@@ -36,6 +36,7 @@ interface PatientContextProps {
   startNewConsultation: (patientId: string, doctorId: string) => Promise<string | null>;
   endCurrentConsultation: () => Promise<void>;
   clearActivePatientAndConsultation: () => void;
+  currentPatientFullHistory: string | null;
 }
 
 const PatientContext = createContext<PatientContextProps | undefined>(undefined);
@@ -50,6 +51,7 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
   const [isLoadingPatients, setIsLoadingPatients] = useState(false);
   const [currentConsultationId, setCurrentConsultationId] = useState<string | null>(null);
+  const [currentPatientFullHistory, setCurrentPatientFullHistory] = useState<string | null>(null);
 
   const fetchPatients = useCallback(async () => {
     if (!user || authLoading) {
@@ -94,6 +96,67 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
     }
   }, [user, authLoading]);
 
+  // New: Function to fetch and compile patient history
+  const fetchAndSetPatientHistory = useCallback(async (patientId: string | null) => {
+    if (!patientId) {
+      setCurrentPatientFullHistory(null);
+      return;
+    }
+    try {
+      toast.info("Buscando histórico completo do paciente...");
+      const { data: consultationSummaries, error: summariesError } = await supabase
+        .from('consultations')
+        .select('ai_summary, end_time, start_time') // Added start_time for better context if end_time is null
+        .eq('patient_id', patientId)
+        .not('ai_summary', 'is', null)
+        .order('start_time', { ascending: true }); // Chronological order
+
+      if (summariesError) {
+        console.error("Error fetching consultation summaries for context:", summariesError);
+        toast.error("Erro ao buscar sumários de consulta: " + summariesError.message);
+        setCurrentPatientFullHistory("Erro ao buscar histórico de sumários.");
+        return;
+      }
+
+      let compiledHistory = "";
+      if (consultationSummaries && consultationSummaries.length > 0) {
+        compiledHistory += "Histórico de Consultas Anteriores do Paciente:\\n";
+        consultationSummaries.forEach(consult => {
+          const dateString = consult.end_time ? new Date(consult.end_time).toLocaleString() : (consult.start_time ? new Date(consult.start_time).toLocaleString() + " (em andamento ou não finalizada)" : "Data desconhecida");
+          compiledHistory += `\\n--- Consulta de: ${dateString} ---\\n`;
+          compiledHistory += `${consult.ai_summary}\\n`;
+        });
+      } else {
+        compiledHistory = "Nenhum sumário de consulta anterior encontrado para este paciente.\\n";
+      }
+
+      // TODO: Fetch and append other medical notes if they exist from another table
+      // For example:
+      // compiledHistory += "\\nOutras Notas Médicas:\\n";
+      // const { data: medicalNotes, error: notesError } = await supabase
+      //   .from('medical_notes') // Assuming a table named 'medical_notes'
+      //   .select('note_text, created_at')
+      //   .eq('patient_id', patientId)
+      //   .order('created_at', { ascending: true });
+      // if (notesError) { /* handle error */ }
+      // if (medicalNotes && medicalNotes.length > 0) {
+      //   medicalNotes.forEach(note => {
+      //     compiledHistory += `\\n--- Nota de ${new Date(note.created_at).toLocaleString()} ---\\n`;
+      //     compiledHistory += `${note.note_text}\\n`;
+      //   });
+      // } else {
+      //   compiledHistory += "Nenhuma outra nota médica encontrada.\\n";
+      // }
+
+      setCurrentPatientFullHistory(compiledHistory.trim());
+      toast.success("Histórico do paciente carregado.");
+    } catch (error: any) {
+      console.error("Failed to fetch full patient history:", error);
+      toast.error("Falha catastrófica ao buscar histórico do paciente: " + error.message);
+      setCurrentPatientFullHistory("Erro crítico ao buscar histórico.");
+    }
+  }, []);
+
   useEffect(() => {
     // Fetch patients when the component mounts or when the user changes
     // and auth is no longer loading.
@@ -104,6 +167,7 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
         setPatients([]);
         setActivePatient(null);
         setCurrentConsultationId(null);
+        setCurrentPatientFullHistory(null);
     }
   }, [user, authLoading, fetchPatients]);
 
@@ -175,22 +239,81 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
           throw new Error("Authentication session not found. Cannot generate summary.");
         }
 
-        const response = await fetch(summaryUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        });
+        // 1. Fetch chat messages for the consultation
+        const { data: messages, error: messagesError } = await supabase
+          .from('chat_messages')
+          .select('sender, text_content, function_call_info, function_result_info, timestamp') // Assuming timestamp column is named 'timestamp'
+          .eq('consultation_id', consultationIdToEnd)
+          .order('timestamp', { ascending: true }); // Assuming timestamp column is named 'timestamp'
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ message: "Unknown error during summary generation." }));
-          throw new Error(errorData.message || `Failed to generate summary (status ${response.status})`);
+        if (messagesError) {
+          console.error('Failed to fetch messages for summary generation:', messagesError);
+          throw new Error(`Failed to fetch messages: ${messagesError.message}`);
         }
-        
-        const summaryResult = await response.json();
-        toast.success(summaryResult.message || "Consultation summary generated successfully.");
-        // Optionally, do something with summaryResult.summary if needed in frontend
+
+        if (!messages || messages.length === 0) {
+          toast.info("No messages in this consultation to summarize.");
+          // Optionally, still mark consultation table with an empty/note summary
+          await supabase
+            .from('consultations')
+            .update({ ai_summary: 'No messages to summarize for this consultation.', updated_at: new Date().toISOString() })
+            .eq('id', consultationIdToEnd);
+          // Skip API call if no messages
+        } else {
+          // 2. Construct consultation_text
+          // Mimic format from old frontend: patientContextService.js
+          const consultation_text = messages
+            .map(msg => {
+              let content = msg.text_content;
+              if (msg.function_call_info) content = `Function Call: ${JSON.stringify(msg.function_call_info)}`;
+              if (msg.function_result_info) content = `Function Result: ${JSON.stringify(msg.function_result_info)}`;
+              if (!content) content = 'Mensagem sem conteúdo textual específico.';
+              
+              let senderPrefix = 'Sistema'; // Default for unknown/system messages
+              if (msg.sender === 'ai') senderPrefix = 'AI';
+              else if (msg.sender === 'user') senderPrefix = 'Doutor(a)'; // Assuming 'user' is doctor in this context
+
+              return `${senderPrefix}: ${content}`;
+            })
+            .join('\n');
+
+          // 3. Call API with consultation_text
+          const response = await fetch(summaryUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ consultation_text }), // Send the constructed text
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => "Failed to get error text from server.");
+            console.error(`Summary generation API request failed with status ${response.status}:`, errorText);
+            throw new Error(`Falha ao gerar o resumo (status ${response.status}): ${errorText}`);
+          }
+          
+          const summaryResult = await response.json(); // Expects { summary: "..." }
+
+          if (!summaryResult || !summaryResult.summary) {
+            throw new Error("Invalid summary response from server.");
+          }
+
+          // 4. Save Summary to Database (consultations table)
+          const { error: updateError } = await supabase
+            .from('consultations')
+            .update({ ai_summary: summaryResult.summary })
+            .eq('id', consultationIdToEnd);
+
+          if (updateError) {
+            console.error("Failed to save AI summary to database:", updateError);
+            toast.error(`Failed to save summary to DB: ${updateError.message}`);
+            // Do not throw here, summary was generated, just not saved. Inform user.
+          } else {
+            toast.success(summaryResult.message || "Consultation summary generated and saved successfully.");
+          }
+        }
+        // Optionally, do something with summaryResult.summary if needed in frontend beyond saving
 
       } catch (summaryError: any) {
         console.error("Error generating consultation summary:", summaryError);
@@ -262,29 +385,32 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
   }, [user, fetchPatients]);
 
   const selectPatient = useCallback(async (patient: Patient | null) => {
-    if (activePatient?.id === patient?.id) return; // No change if same patient
+    if (activePatient?.id === patient?.id && patient !== null) {
+      if (currentPatientFullHistory !== null || patient === null) {
+        return; 
+      }
+    }
 
     if (currentConsultationId && activePatient) {
-      // Check if the doctor has actively participated in the current consultation
       let doctorParticipated = false;
       try {
         const { count, error } = await supabase
           .from('chat_messages')
           .select('*', { count: 'exact', head: true })
           .eq('consultation_id', currentConsultationId)
-          .eq('sender', 'user'); // 'user' sender indicates a message from the doctor
+          .eq('sender', 'user');
 
         if (error) {
           console.error("Error checking for doctor's participation:", error);
           toast.error("Falha ao verificar participação do médico. Procedendo com cautela.");
-          doctorParticipated = true; // Default to true (prompt) to be safe if DB check fails
+          doctorParticipated = true;
         } else {
           doctorParticipated = (count || 0) > 0;
         }
       } catch (e) {
         console.error("Exception checking for doctor's participation:", e);
         toast.error("Exceção ao verificar participação. Procedendo com cautela.");
-        doctorParticipated = true; // Default to true (prompt) on exception
+        doctorParticipated = true;
       }
 
       if (doctorParticipated) {
@@ -295,16 +421,13 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
           await endCurrentConsultation(); 
           setCurrentConsultationId(null); 
         } else {
-          return; // User cancelled the change
+          return; 
         }
       } else {
-        // Doctor did not participate, end consultation silently
         await endCurrentConsultation();
         setCurrentConsultationId(null);
       }
     } else if (currentConsultationId) {
-      // This case handles deselecting the current patient or an inconsistent state
-      // (consultation active but no activePatient in context)
       await endCurrentConsultation();
       setCurrentConsultationId(null);
     }
@@ -313,13 +436,15 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
 
     if (patient) {
         toast.success(`${patient.name} selected.`);
+        fetchAndSetPatientHistory(patient.id);
     } else {
-        if(currentConsultationId) { // Should have been cleared above if a consultation existed
+        if(currentConsultationId) { 
             setCurrentConsultationId(null); 
         }
         toast.info("No patient selected.");
+        fetchAndSetPatientHistory(null);
     }
-  }, [activePatient, currentConsultationId, endCurrentConsultation, clearActivePatientAndConsultation]);
+  }, [activePatient, currentConsultationId, endCurrentConsultation, fetchAndSetPatientHistory, currentPatientFullHistory]);
 
   const value = {
     patients,
@@ -331,7 +456,8 @@ export const PatientProvider = ({ children }: PatientProviderProps) => {
     currentConsultationId,
     startNewConsultation,
     endCurrentConsultation,
-    clearActivePatientAndConsultation
+    clearActivePatientAndConsultation,
+    currentPatientFullHistory
   };
 
   return (

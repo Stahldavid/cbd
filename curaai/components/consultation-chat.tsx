@@ -89,7 +89,8 @@ export function ConsultationChat() {
     currentConsultationId, 
     startNewConsultation, 
     endCurrentConsultation, // Assuming this will be added to PatientContext
-    clearActivePatientAndConsultation // Assuming this will be added
+    clearActivePatientAndConsultation,
+    currentPatientFullHistory // Added to destructure from usePatient
   } = usePatient(); 
 
   const [input, setInput] = useState("");
@@ -239,17 +240,25 @@ export function ConsultationChat() {
   };
   
   const getContextForAI = async (patientId: string) => {
-    if (!activePatient || activePatient.id !== patientId) {
-      return { summary: "Informações do paciente não disponíveis ou paciente desalinhado." };
+    if (!activePatient) {
+      return { 
+        details: "Paciente ativo não encontrado.", 
+        fullPatientHistoryText: "Nenhum paciente ativo para buscar histórico."
+      };
     }
-    // This should ideally call a more robust service like in the old frontend's patientContextService.js
+    if (patientId && activePatient.id !== patientId) {
+        return { 
+        details: "ID do paciente fornecido não corresponde ao paciente ativo.",
+        fullPatientHistoryText: "Erro de desalinhamento de ID do paciente."
+      };
+    }
+
     return {
       patient_id: activePatient.id,
       name: activePatient.name,
       date_of_birth: activePatient.date_of_birth,
-      // Include other details your backend expects from activePatient
-      details: `Paciente: ${activePatient.name}, Data de Nascimento: ${activePatient.date_of_birth}. Histórico e notas relevantes devem ser buscados e incluídos aqui.`,
-      // This is a placeholder. The actual context should be more structured and comprehensive.
+      details: `Informações básicas: Paciente ${activePatient.name}, Data de Nascimento: ${activePatient.date_of_birth}.`,
+      fullPatientHistoryText: currentPatientFullHistory || "Nenhum histórico contextual disponível para este paciente."
     };
   };
 
