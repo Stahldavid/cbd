@@ -20,6 +20,9 @@ export interface Patient {
   avatar_url?: string;
   age?: number | string;
   primary_condition?: string;
+  medical_conditions?: string;
+  current_medications?: string;
+  allergies?: string;
   // Add other relevant patient fields that you need in the context or for display
   // e.g., email, phone, medical_history_summary, etc.
 }

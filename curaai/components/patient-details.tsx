@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from 'sonner'
 import { PrescriptionTab } from "@/components/PrescriptionTab"
 import { useTabStore } from "@/lib/tabStore"
+import { cn } from "@/lib/utils"
 
 interface Doctor {
   name: string;
@@ -137,16 +138,15 @@ function PatientProfile({ patient }: PatientSubComponentProps) {
     }
   }, [patient, isEditing]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value || null })); // Set to null if empty string for Supabase
+    setFormData(prev => ({ ...prev, [name]: value || null }));
   };
   
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target; // value is YYYY-MM-DD
     setFormData(prev => ({ ...prev, [name]: value || null }));
   };
-
 
   const handleEdit = () => {
     setFormData({ ...patient }); // Ensure form starts with current patient data
@@ -175,7 +175,6 @@ function PatientProfile({ patient }: PatientSubComponentProps) {
         return;
     }
 
-
     const updateData: Partial<PatientFromContext> & { updated_at: string } = {
       // Only include fields that are meant to be editable
       name: formData.name,
@@ -185,7 +184,7 @@ function PatientProfile({ patient }: PatientSubComponentProps) {
       rg: formData.rg,
       phone_number: formData.phone_number,
       email: formData.email,
-      address: formData.address, 
+      address: formData.address,
       updated_at: new Date().toISOString(),
     };
     
@@ -196,7 +195,6 @@ function PatientProfile({ patient }: PatientSubComponentProps) {
             delete updateData[typedKey];
         }
     });
-
 
     try {
       const { data, error } = await supabase
@@ -277,85 +275,53 @@ function PatientProfile({ patient }: PatientSubComponentProps) {
         <CardContent className="text-sm space-y-3">
           {isEditing ? (
             <>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-1">
                 <div>
-                  <Label htmlFor="name" className="text-xs">Name</Label>
-                  <Input type="text" name="name" id="name" value={formData.name || ''} onChange={handleInputChange} className="h-8 text-xs" />
+                  <Label htmlFor="name" className="text-xs">Full Name</Label>
+                  <Input id="name" name="name" value={formData.name || ''} onChange={handleInputChange} className="h-8 text-sm" />
                 </div>
                 <div>
                   <Label htmlFor="date_of_birth" className="text-xs">Date of Birth</Label>
-                  <Input 
-                    type="date" name="date_of_birth" id="date_of_birth" 
-                    // Ensure date is formatted as YYYY-MM-DD for input type="date"
-                    value={formData.date_of_birth ? formData.date_of_birth.split('T')[0] : ''} 
-                    onChange={handleDateChange} className="h-8 text-xs" 
-                  />
+                  {/* Format date to YYYY-MM-DD for input type="date" */}
+                  <Input id="date_of_birth" name="date_of_birth" type="date" value={formData.date_of_birth ? new Date(formData.date_of_birth).toISOString().split('T')[0] : ''} onChange={handleDateChange} className="h-8 text-sm"/>
                 </div>
                 <div>
                   <Label htmlFor="gender" className="text-xs">Gender</Label>
-                  <Input type="text" name="gender" id="gender" value={formData.gender || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="e.g., Male, Female, Other" />
+                  <Input id="gender" name="gender" value={formData.gender || ''} onChange={handleInputChange} className="h-8 text-sm" />
                 </div>
                 <div>
                   <Label htmlFor="cpf" className="text-xs">CPF</Label>
-                  <Input type="text" name="cpf" id="cpf" value={formData.cpf || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="000.000.000-00"/>
+                  <Input id="cpf" name="cpf" value={formData.cpf || ''} onChange={handleInputChange} className="h-8 text-sm" />
                 </div>
                 <div>
                   <Label htmlFor="rg" className="text-xs">RG</Label>
-                  <Input type="text" name="rg" id="rg" value={formData.rg || ''} onChange={handleInputChange} className="h-8 text-xs" />
+                  <Input id="rg" name="rg" value={formData.rg || ''} onChange={handleInputChange} className="h-8 text-sm" />
                 </div>
                 <div>
                   <Label htmlFor="phone_number" className="text-xs">Phone</Label>
-                  <Input type="tel" name="phone_number" id="phone_number" value={formData.phone_number || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="(XX) XXXXX-XXXX"/>
+                  <Input id="phone_number" name="phone_number" value={formData.phone_number || ''} onChange={handleInputChange} className="h-8 text-sm" />
                 </div>
                 <div className="col-span-2">
                   <Label htmlFor="email" className="text-xs">Email</Label>
-                  <Input type="email" name="email" id="email" value={formData.email || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="patient@example.com"/>
+                  <Input id="email" name="email" value={formData.email || ''} onChange={handleInputChange} className="h-8 text-sm" />
                 </div>
-                 <div className="col-span-2">
+                <div className="col-span-2">
                   <Label htmlFor="address" className="text-xs">Address</Label>
-                  <Input type="text" name="address" id="address" value={formData.address || ''} onChange={handleInputChange} className="h-8 text-xs" placeholder="Street, Number, City, State"/>
+                  <Input id="address" name="address" value={formData.address || ''} onChange={handleInputChange} className="h-8 text-sm" />
                 </div>
               </div>
             </>
           ) : (
-            // View Mode - uses `displayData` which points to `patient` prop
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Patient ID</p>
-                <p className="font-mono text-[11px]">{displayPatientId}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Name</p>
-                <p>{patient.name || "Not registered"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Date of Birth</p>
-                <p>{(patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : "Not available")} {displayAge !== undefined && `(${displayAge} y/o)`}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Gender</p>
-                <p>{patient.gender || "Not specified"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">CPF</p>
-                <p>{patient.cpf || "Not registered"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">RG</p>
-                <p>{patient.rg || "Not registered"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Phone</p>
-                <p>{patient.phone_number || "Not registered"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs font-medium">Email</p>
-                <p>{patient.email || "Not registered"}</p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-muted-foreground text-xs font-medium">Address</p>
-                <p>{patient.address || "Not registered"}</p>
-              </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-1 text-sm">
+              <ProfileDetailItem label="Full Name" value={patient.name} />
+              <ProfileDetailItem label="Date of Birth" value={displayDob} />
+              <ProfileDetailItem label="Age" value={displayAge ? `${displayAge} years` : "N/A"} />
+              <ProfileDetailItem label="Gender" value={patient.gender} />
+              <ProfileDetailItem label="CPF" value={patient.cpf} />
+              <ProfileDetailItem label="RG" value={patient.rg} />
+              <ProfileDetailItem label="Phone" value={patient.phone_number} />
+              <ProfileDetailItem label="Email" value={patient.email} />
+              <ProfileDetailItem label="Address" value={patient.address} className="col-span-2" />
             </div>
           )}
           {!isEditing && (
@@ -363,10 +329,26 @@ function PatientProfile({ patient }: PatientSubComponentProps) {
           )}
         </CardContent>
       </Card>
-      {/* Other cards remain unchanged for now, but could also become editable */}
-      <Card><CardHeader><CardTitle className="text-base font-semibold">Medical Conditions</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground italic">Data for {patient.name || "Selected Patient"} not yet linked.</p></CardContent></Card>
-      <Card><CardHeader><CardTitle className="text-base font-semibold">Current Medications</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground italic">Data for {patient.name || "Selected Patient"} not yet linked.</p></CardContent></Card>
-      <Card className="border-destructive/30"><CardHeader className="text-destructive"><CardTitle className="text-base font-semibold flex items-center gap-1.5"><LucideAlertCircle className="h-4 w-4" />Allergies</CardTitle></CardHeader><CardContent className="bg-destructive/5"><p className="text-xs text-muted-foreground italic">Data for {patient.name || "Selected Patient"} not yet linked.</p></CardContent></Card>
+      {/* Use EditablePatientDataCard for these sections */}
+      <EditablePatientDataCard
+        patient={patient}
+        field="medical_conditions"
+        title="Medical Conditions"
+        placeholder="Enter medical conditions..."
+      />
+      <EditablePatientDataCard
+        patient={patient}
+        field="current_medications"
+        title="Current Medications"
+        placeholder="Enter current medications..."
+      />
+      <EditablePatientDataCard
+        patient={patient}
+        field="allergies"
+        title="Allergies"
+        placeholder="Enter allergies..."
+        isSensitive={true}
+      />
     </div>
   )
 }
@@ -543,5 +525,130 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
       </Tabs>
     </div>
   )
-} 
- 
+}
+
+interface ProfileDetailItemProps {
+  label: string;
+  value?: string | number | null;
+  className?: string;
+}
+
+const ProfileDetailItem: React.FC<ProfileDetailItemProps> = ({ label, value, className }) => (
+  <div className={cn("py-0.5", className)}>
+    <p className="text-xs text-muted-foreground">{label}</p>
+    <p className="font-medium truncate">{value || "Not available"}</p>
+  </div>
+);
+
+// New Component: EditablePatientDataCard
+interface EditablePatientDataCardProps {
+  patient: PatientFromContext;
+  field: keyof PatientFromContext; // Ensure field is a valid key of Patient
+  title: string;
+  placeholder: string;
+  isSensitive?: boolean;
+}
+
+const EditablePatientDataCard: React.FC<EditablePatientDataCardProps> = ({ patient, field, title, placeholder, isSensitive }) => {
+  const { fetchPatients, selectPatient } = usePatient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [content, setContent] = useState(patient[field] as string || '');
+
+  useEffect(() => {
+    if (!isEditing) {
+      setContent(patient[field] as string || '');
+    }
+  }, [patient, field, isEditing]);
+
+  const handleSave = async () => {
+    if (!patient?.id) {
+      toast.error("Patient ID is missing.");
+      return;
+    }
+
+    const updateData = {
+      [field]: content,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .update(updateData)
+        .eq('id', patient.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        toast.success(`${title} updated successfully.`);
+        await fetchPatients(); 
+        selectPatient(data as PatientFromContext);
+        setContent(data[field] as string || '');
+      }
+      setIsEditing(false);
+    } catch (error: any) {
+      toast.error(`Failed to update ${title.toLowerCase()}: ${error.message}`);
+      console.error(`Error updating ${title.toLowerCase()}:`, error);
+    }
+  };
+
+  const cardClasses = cn(isSensitive && !isEditing && "border-destructive/30");
+  const headerClasses = cn(isSensitive && !isEditing && "text-destructive");
+  const contentWrapperClasses = cn(isSensitive && !isEditing && "bg-destructive/5");
+
+  return (
+    <Card className={cardClasses}>
+      <CardHeader className={headerClasses}>
+        <CardTitle className="text-base font-semibold flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            {isSensitive && <LucideAlertCircle className="h-4 w-4" />}
+            {title}
+          </span>
+          {!isEditing ? (
+            <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)}>
+              <LucideEdit className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <div className="flex items-center space-x-2">
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600 hover:text-green-700" onClick={handleSave}>
+                      <LucideCheck className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>Save Changes</p></TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700" onClick={() => { setIsEditing(false); setContent(patient[field] as string || ''); }}>
+                      <LucideX className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>Cancel</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className={cn("text-sm", contentWrapperClasses)}>
+        {isEditing ? (
+          <Textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder={placeholder}
+            className="min-h-[80px] text-sm"
+            rows={3}
+          />
+        ) : content ? (
+          <p className="whitespace-pre-wrap">{content}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">Data for {patient.name || "Selected Patient"} not yet linked.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}; 
