@@ -31,6 +31,8 @@ import { toast } from 'sonner'
 import { PrescriptionTab } from "@/components/PrescriptionTab"
 import { useTabStore } from "@/lib/tabStore"
 import { cn } from "@/lib/utils"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface Doctor {
   name: string;
@@ -51,6 +53,7 @@ interface ConsultationNotesProps {
 
 interface PatientSubComponentProps {
   patient: PatientFromContext;
+  currentPatientFullHistory?: string | null;
 }
 
 interface PrescriptionTabProps extends PatientSubComponentProps {
@@ -59,7 +62,7 @@ interface PrescriptionTabProps extends PatientSubComponentProps {
 
 export function PatientDetails() {
   const { activeTab, setActiveTab } = useTabStore();
-  const { activePatient, isLoadingPatients } = usePatient()
+  const { activePatient, isLoadingPatients, currentPatientFullHistory } = usePatient()
   const { doctorId, loading: authLoading } = useAuth()
 
   if (isLoadingPatients || authLoading) {
@@ -95,7 +98,7 @@ export function PatientDetails() {
             </TabsContent>
 
             <TabsContent value="history" className="mt-0">
-              <PatientHistory patient={activePatient} />
+              <PatientHistory patient={activePatient} currentPatientFullHistory={currentPatientFullHistory} />
             </TabsContent>
 
             <TabsContent value="prescriptions" className="mt-0">
@@ -353,12 +356,61 @@ function PatientProfile({ patient }: PatientSubComponentProps) {
   )
 }
 
-function PatientHistory({ patient }: PatientSubComponentProps) {
+function PatientHistory({ patient, currentPatientFullHistory }: PatientSubComponentProps) {
+  // const { patientLoading } = usePatient(); // Removed this line
+
+  // Determine if an active patient is selected to refine loading/empty messages
+  const isActivePatientSelected = !!patient?.id;
+
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base font-semibold">Consultation History: {patient.name || "Selected Patient"}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="text-base font-semibold">Consultation History: {patient?.name || "Selected Patient"}</CardTitle></CardHeader>
       <CardContent>
-        <p className="text-sm text-muted-foreground italic">Full history for patient ID {patient.id.substring(0,8)}... will be implemented here.</p>
+        {!currentPatientFullHistory && isActivePatientSelected ? (
+          // Loading state specifically for history when a patient is selected but history hasn't loaded
+          <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
+            <LucideFileText className="h-7 w-7 text-muted-foreground/80 mb-2 animate-pulse" />
+            <p className="text-xs text-muted-foreground">Loading history for {patient?.name || "selected patient"}...</p>
+          </div>
+        ) : currentPatientFullHistory && (currentPatientFullHistory.startsWith("Erro ao buscar") || currentPatientFullHistory.startsWith("Falha catastrófica")) ? (
+          // Error state: display error message from context
+          <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-destructive/10 text-destructive">
+            <LucideAlertCircle className="h-7 w-7 mb-2" />
+            <p className="text-xs text-center px-4">{currentPatientFullHistory}</p>
+          </div>
+        ) : currentPatientFullHistory && currentPatientFullHistory !== "Nenhum sumário de consulta anterior encontrado para este paciente.\n" && currentPatientFullHistory.trim() !== "Histórico de Consultas Anteriores do Paciente:" && currentPatientFullHistory.trim() !== "" ? (
+          // Success state: history data is available and not an empty/default message
+          <ScrollArea className="h-[calc(100vh-220px)]" type="auto">
+            <div className="prose prose-sm dark:prose-invert max-w-none p-1">
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  p: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"p">) => <p className="mb-2 last:mb-0" {...props} />,
+                  h1: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"h1">) => <h1 className="text-lg font-semibold mt-3 mb-1.5" {...props} />,
+                  h2: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"h2">) => <h2 className="text-base font-semibold mt-2.5 mb-1" {...props} />,
+                  h3: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"h3">) => <h3 className="text-sm font-semibold mt-2 mb-0.5" {...props} />,
+                  ul: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"ul">) => <ul className="list-disc list-inside pl-2 mb-2" {...props} />,
+                  ol: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"ol">) => <ol className="list-decimal list-inside pl-2 mb-2" {...props} />,
+                  li: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"li">) => <li className="mb-0.5" {...props} />,
+                }}
+              >
+                {currentPatientFullHistory}
+              </ReactMarkdown>
+            </div>
+          </ScrollArea>
+        ) : isActivePatientSelected ? (
+          // Empty state for a selected patient: no history found, or it's the default empty message
+          <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
+            <LucideInfo className="h-7 w-7 text-muted-foreground/80 mb-2" />
+            <p className="text-xs text-muted-foreground">No consultation history available for {patient?.name || "this patient"}.</p>
+          </div>
+        ) : (
+          // Default empty state if no patient is selected (though PatientDetails should prevent this tab from being very useful then)
+          <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
+            <LucideInfo className="h-7 w-7 text-muted-foreground/80 mb-2" />
+            <p className="text-xs text-muted-foreground">Select a patient to view their history.</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
