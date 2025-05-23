@@ -30,6 +30,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { usePatient } from "@/contexts/PatientContext"
 import { supabase } from "@/lib/supabaseClient" 
 import { toast } from "sonner"
+import { PrescriptionProcessor } from "@/lib/prescriptionContext"
 
 // Backend URLs
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
@@ -89,7 +90,8 @@ export function ConsultationChat() {
     currentConsultationId, 
     startNewConsultation, 
     endCurrentConsultation, // Assuming this will be added to PatientContext
-    clearActivePatientAndConsultation // Assuming this will be added
+    clearActivePatientAndConsultation,
+    currentPatientFullHistory // Added to destructure from usePatient
   } = usePatient(); 
 
   const [input, setInput] = useState("");
@@ -239,17 +241,25 @@ export function ConsultationChat() {
   };
   
   const getContextForAI = async (patientId: string) => {
-    if (!activePatient || activePatient.id !== patientId) {
-      return { summary: "Informações do paciente não disponíveis ou paciente desalinhado." };
+    if (!activePatient) {
+      return { 
+        details: "Paciente ativo não encontrado.", 
+        fullPatientHistoryText: "Nenhum paciente ativo para buscar histórico."
+      };
     }
-    // This should ideally call a more robust service like in the old frontend's patientContextService.js
+    if (patientId && activePatient.id !== patientId) {
+        return { 
+        details: "ID do paciente fornecido não corresponde ao paciente ativo.",
+        fullPatientHistoryText: "Erro de desalinhamento de ID do paciente."
+      };
+    }
+
     return {
       patient_id: activePatient.id,
       name: activePatient.name,
       date_of_birth: activePatient.date_of_birth,
-      // Include other details your backend expects from activePatient
-      details: `Paciente: ${activePatient.name}, Data de Nascimento: ${activePatient.date_of_birth}. Histórico e notas relevantes devem ser buscados e incluídos aqui.`,
-      // This is a placeholder. The actual context should be more structured and comprehensive.
+      details: `Informações básicas: Paciente ${activePatient.name}, Data de Nascimento: ${activePatient.date_of_birth}.`,
+      fullPatientHistoryText: currentPatientFullHistory || "Nenhum histórico contextual disponível para este paciente."
     };
   };
 
@@ -626,6 +636,9 @@ export function ConsultationChat() {
       {/* Chat messages */}
       <ScrollArea className="flex-1 p-4 bg-gray-50"> {/* Changed background */}
         <div className="space-y-4 max-w-3xl mx-auto pb-4"> {/* Added pb-4 */}
+          {/* Prescription Processor to monitor function results */}
+          <PrescriptionProcessor messages={messages} />
+          
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message} userEmail={user?.email} />
           ))}

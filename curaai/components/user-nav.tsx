@@ -14,9 +14,12 @@ import {
 import { useAuth } from "@/contexts/AuthContext"
 import { useRouter } from 'next/navigation'
 import { Skeleton } from "@/components/ui/skeleton"
+import React, { useState } from "react"; // Added import
+import DoctorSettingsModal from "./DoctorSettingsModal"; // Added import
 
 export function UserNav() {
   const { user, signOut, loading } = useAuth()
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false); // Added state
   const router = useRouter()
 
   const handleLogout = async () => {
@@ -54,42 +57,50 @@ export function UserNav() {
   const displayRole = "Doctor"
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-9 rounded-full px-2 flex items-center gap-2">
-          <Avatar className="h-8 w-8 border-2 border-primary">
-            <AvatarImage src={user.user_metadata?.avatar_url || undefined} alt={displayName || "User"} />
-            <AvatarFallback className="bg-primary text-primary-foreground">{fallbackText}</AvatarFallback>
-          </Avatar>
-          <div className="hidden md:block text-left">
-            <p className="text-sm font-medium leading-none">{displayName}</p>
-            <p className="text-xs leading-none text-muted-foreground mt-1">{displayRole}</p>
-          </div>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">{displayName}</p>
-            <p className="text-xs leading-none text-muted-foreground">
-              {userEmail}
-            </p>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => router.push('/profile')}>
-            <span>Profile</span>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="relative h-9 rounded-full px-2 flex items-center gap-2">
+            <Avatar className="h-8 w-8 border-2 border-primary">
+              <AvatarImage src={user.user_metadata?.avatar_url || undefined} alt={displayName || "User"} />
+              <AvatarFallback className="bg-primary text-primary-foreground">{fallbackText}</AvatarFallback>
+            </Avatar>
+            <div className="hidden md:block text-left">
+              <p className="text-sm font-medium leading-none">{displayName}</p>
+              <p className="text-xs leading-none text-muted-foreground mt-1">{displayRole}</p>
+            </div>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-56" align="end" forceMount>
+          <DropdownMenuLabel className="font-normal">
+            <div className="flex flex-col space-y-1">
+              <p className="text-sm font-medium leading-none">{displayName}</p>
+              <p className="text-xs leading-none text-muted-foreground">
+                {userEmail}
+              </p>
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={() => router.push('/profile')}>
+              <span>Profile</span>
+            </DropdownMenuItem>
+            {/* Updated Settings Item */}
+            <DropdownMenuItem onClick={() => setIsSettingsModalOpen(true)}>
+              <span>Settings</span>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleLogout}>
+            <span>Log out</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push('/settings')}>
-            <span>Settings</span>
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout}>
-          <span>Log out</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {/* Modal Component */}
+      <DoctorSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+      />
+    </>
   )
 }

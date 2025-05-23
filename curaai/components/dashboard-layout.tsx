@@ -2,6 +2,7 @@ import type React from "react"
 import { UserNav } from "@/components/user-nav"
 import { LucideSettings } from "lucide-react"
 import { PatientProvider } from "@/contexts/PatientContext"
+import { PrescriptionProvider } from "@/lib/prescriptionContext"
 
 export function DashboardLayout({
   children,
@@ -32,7 +33,9 @@ export function DashboardLayout({
       {/* Main content with 3-panel layout */}
       <main className="flex flex-1 pt-[60px]">
         <PatientProvider>
-          {children}
+          <PrescriptionProvider>
+            {children}
+          </PrescriptionProvider>
         </PatientProvider>
       </main>
     </div>

@@ -22,11 +22,17 @@ import {
   LucideUserCircle2,
 } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { usePatient, Patient as PatientFromContext } from "@/contexts/PatientContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from 'sonner'
 import { PrescriptionTab } from "@/components/PrescriptionTab"
+import { useTabStore } from "@/lib/tabStore"
+import { cn } from "@/lib/utils"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface Doctor {
   name: string;
@@ -47,6 +53,7 @@ interface ConsultationNotesProps {
 
 interface PatientSubComponentProps {
   patient: PatientFromContext;
+  currentPatientFullHistory?: string | null;
 }
 
 interface PrescriptionTabProps extends PatientSubComponentProps {
@@ -54,8 +61,8 @@ interface PrescriptionTabProps extends PatientSubComponentProps {
 }
 
 export function PatientDetails() {
-  const [activeUITab, setActiveUITab] = useState("profile")
-  const { activePatient, isLoadingPatients } = usePatient()
+  const { activeTab, setActiveTab } = useTabStore();
+  const { activePatient, isLoadingPatients, currentPatientFullHistory } = usePatient()
   const { doctorId, loading: authLoading } = useAuth()
 
   if (isLoadingPatients || authLoading) {
@@ -73,25 +80,25 @@ export function PatientDetails() {
   }
 
   return (
-    <div className="w-[30%] min-w-[350px] max-w-[450px] h-[calc(100vh-60px)] overflow-hidden bg-background flex flex-col border-l border-border">
-      <Tabs value={activeUITab} onValueChange={setActiveUITab} className="flex-1 flex flex-col">
+    <div className="w-[30%] min-w-[350px] max-w-[450px] h-[calc(100vh-60px)] bg-background flex flex-col border-l border-border">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         <div className="px-3 pt-3 border-b border-border sticky top-0 bg-background z-10">
           <TabsList className="grid w-full grid-cols-4 h-9">
             <TabsTrigger value="profile" className="text-xs px-2">Profile</TabsTrigger>
             <TabsTrigger value="history" className="text-xs px-2">History</TabsTrigger>
-            <TabsTrigger value="prescriptions" className="text-xs px-2">Prescriptions</TabsTrigger>
+            <TabsTrigger value="prescriptions" className="text-xs px-2" data-tab="prescription">Prescriptions</TabsTrigger>
             <TabsTrigger value="notes" className="text-xs px-2">Notes</TabsTrigger>
           </TabsList>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1" type="auto">
           <div className="p-3 space-y-3">
             <TabsContent value="profile" className="mt-0">
               <PatientProfile patient={activePatient} />
             </TabsContent>
 
             <TabsContent value="history" className="mt-0">
-              <PatientHistory patient={activePatient} />
+              <PatientHistory patient={activePatient} currentPatientFullHistory={currentPatientFullHistory} />
             </TabsContent>
 
             <TabsContent value="prescriptions" className="mt-0">
@@ -110,7 +117,7 @@ export function PatientDetails() {
 
 function PatientDetailsSkeleton() {
   return (
-    <div className="w-[30%] min-w-[350px] max-w-[450px] h-[calc(100vh-60px)] overflow-hidden bg-background flex flex-col border-l border-border p-3 space-y-3">
+    <div className="w-[30%] min-w-[350px] max-w-[450px] h-[calc(100vh-60px)] bg-background flex flex-col border-l border-border p-3 space-y-3">
       <div className="grid grid-cols-4 gap-2 px-1 pt-1 mb-1">
         {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-md" />)}
       </div>
@@ -123,69 +130,287 @@ function PatientDetailsSkeleton() {
 }
 
 function PatientProfile({ patient }: PatientSubComponentProps) {
-  const displayName = patient.name || "Selected Patient"
-  const displayDob = patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString('pt-BR') : "Not available"
-  const displayAge = patient.date_of_birth ? (new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear()) : undefined
-  const displayPatientId = `#${patient.id.substring(0,8).toUpperCase()}...`
-  const displayGender = patient.gender || "Not specified"
-  const displayCpfRg = patient.cpf || patient.rg || "Not registered"
-  const displayPhone = patient.phone_number || "Not registered"
-  const displayEmail = patient.email || "Not registered"
+  const { fetchPatients, selectPatient } = usePatient(); // Get context functions
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<Partial<PatientFromContext>>({ ...patient });
+
+  useEffect(() => {
+    // Sync formData when patient prop changes and not in edit mode
+    if (!isEditing) {
+      setFormData({ ...patient });
+    }
+  }, [patient, isEditing]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value || null }));
+  };
+  
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target; // value is YYYY-MM-DD
+    setFormData(prev => ({ ...prev, [name]: value || null }));
+  };
+
+  const handleEdit = () => {
+    setFormData({ ...patient }); // Ensure form starts with current patient data
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    setFormData({ ...patient }); // Reset changes
+    setIsEditing(false);
+  };
+
+  const handleSave = async () => {
+    if (!patient?.id) {
+      toast.error("Patient ID is missing.");
+      return;
+    }
+
+    // Basic validation example (name is required)
+    if (!formData.name?.trim()) {
+        toast.error("Patient name cannot be empty.");
+        return;
+    }
+    // DOB validation (ensure it's a valid date if provided)
+    if (formData.date_of_birth && isNaN(new Date(formData.date_of_birth).getTime())) {
+        toast.error("Invalid Date of Birth.");
+        return;
+    }
+
+    const updateData: Partial<PatientFromContext> & { updated_at: string } = {
+      // Only include fields that are meant to be editable
+      name: formData.name,
+      date_of_birth: formData.date_of_birth ? new Date(formData.date_of_birth).toISOString() : undefined,
+      gender: formData.gender,
+      cpf: formData.cpf,
+      rg: formData.rg,
+      phone_number: formData.phone_number,
+      email: formData.email,
+      address: formData.address,
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Remove keys with undefined values to prevent Supabase errors
+    Object.keys(updateData).forEach(key => {
+        const typedKey = key as keyof typeof updateData;
+        if (updateData[typedKey] === undefined) {
+            delete updateData[typedKey];
+        }
+    });
+
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .update(updateData)
+        .eq('id', patient.id)
+        .select() // Select the updated row
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        toast.success("Patient profile updated successfully.");
+        await fetchPatients(); // Refresh the entire patient list
+        // Attempt to re-select the patient to update context.
+        // This relies on fetchPatients correctly updating the list that selectPatient uses.
+        selectPatient(data as PatientFromContext); 
+        setFormData(data as PatientFromContext); // Update local form data with saved data
+      }
+      setIsEditing(false);
+    } catch (error: any) {
+      toast.error(`Failed to update patient: ${error.message}`);
+      console.error("Error updating patient:", error);
+    }
+  };
+  
+  // Prepare display values, handling potential null/undefined from formData or patient
+  // When not editing, always use `patient` prop for stable display until save.
+  // When editing, use `formData`.
+  const displayData = isEditing ? formData : patient;
+  
+  const displayName = displayData.name || "Selected Patient";
+  const displayDob = displayData.date_of_birth 
+    ? new Date(displayData.date_of_birth).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) // Ensure UTC for consistency if DOB is stored as ISO string
+    : "Not available";
+  const displayAge = displayData.date_of_birth 
+    ? (new Date().getFullYear() - new Date(displayData.date_of_birth).getFullYear()) 
+    : undefined;
+  const displayPatientId = `#${patient.id.substring(0,8).toUpperCase()}...`; // Original patient ID, should not be editable or change
 
   return (
     <div className="space-y-3">
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center justify-between">
-            <span>Demographics: {displayName}</span>
-            <Button variant="outline" size="icon" className="h-7 w-7">
-              <LucideEdit className="h-3.5 w-3.5" />
-            </Button>
+            {/* Title should reflect the patient being viewed, not editable formData name */}
+            <span>Demographics: {patient.name || "Selected Patient"}</span> 
+            {!isEditing ? (
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={handleEdit}>
+                <LucideEdit className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <TooltipProvider delayDuration={100}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600 hover:text-green-700" onClick={handleSave}>
+                        <LucideCheck className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom"><p>Save Changes</p></TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700" onClick={handleCancel}>
+                        <LucideX className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom"><p>Cancel</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )}
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-sm space-y-2">
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Patient ID</p>
-              <p className="font-mono text-[11px]">{displayPatientId}</p>
+        <CardContent className="text-sm space-y-3">
+          {isEditing ? (
+            <>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-1">
+                <div>
+                  <Label htmlFor="name" className="text-xs">Full Name</Label>
+                  <Input id="name" name="name" value={formData.name || ''} onChange={handleInputChange} className="h-8 text-sm" />
+                </div>
+                <div>
+                  <Label htmlFor="date_of_birth" className="text-xs">Date of Birth</Label>
+                  {/* Format date to YYYY-MM-DD for input type="date" */}
+                  <Input id="date_of_birth" name="date_of_birth" type="date" value={formData.date_of_birth ? new Date(formData.date_of_birth).toISOString().split('T')[0] : ''} onChange={handleDateChange} className="h-8 text-sm"/>
+                </div>
+                <div>
+                  <Label htmlFor="gender" className="text-xs">Gender</Label>
+                  <Input id="gender" name="gender" value={formData.gender || ''} onChange={handleInputChange} className="h-8 text-sm" />
+                </div>
+                <div>
+                  <Label htmlFor="cpf" className="text-xs">CPF</Label>
+                  <Input id="cpf" name="cpf" value={formData.cpf || ''} onChange={handleInputChange} className="h-8 text-sm" />
+                </div>
+                <div>
+                  <Label htmlFor="rg" className="text-xs">RG</Label>
+                  <Input id="rg" name="rg" value={formData.rg || ''} onChange={handleInputChange} className="h-8 text-sm" />
+                </div>
+                <div>
+                  <Label htmlFor="phone_number" className="text-xs">Phone</Label>
+                  <Input id="phone_number" name="phone_number" value={formData.phone_number || ''} onChange={handleInputChange} className="h-8 text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <Label htmlFor="email" className="text-xs">Email</Label>
+                  <Input id="email" name="email" value={formData.email || ''} onChange={handleInputChange} className="h-8 text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <Label htmlFor="address" className="text-xs">Address</Label>
+                  <Input id="address" name="address" value={formData.address || ''} onChange={handleInputChange} className="h-8 text-sm" />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-1 text-sm">
+              <ProfileDetailItem label="Full Name" value={patient.name} />
+              <ProfileDetailItem label="Date of Birth" value={displayDob} />
+              <ProfileDetailItem label="Age" value={displayAge ? `${displayAge} years` : "N/A"} />
+              <ProfileDetailItem label="Gender" value={patient.gender} />
+              <ProfileDetailItem label="CPF" value={patient.cpf} />
+              <ProfileDetailItem label="RG" value={patient.rg} />
+              <ProfileDetailItem label="Phone" value={patient.phone_number} />
+              <ProfileDetailItem label="Email" value={patient.email} />
+              <ProfileDetailItem label="Address" value={patient.address} className="col-span-2" />
             </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Date of Birth</p>
-              <p>{displayDob} {displayAge !== undefined && `(${displayAge} y/o)`}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Gender</p>
-              <p>{displayGender}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">CPF/RG</p>
-              <p>{displayCpfRg}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Phone</p>
-              <p>{displayPhone}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium">Email</p>
-              <p>{displayEmail}</p>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground pt-1 italic">Further patient profile details (conditions, medications, allergies) will be populated from actual patient data.</p>
+          )}
+          {!isEditing && (
+            <p className="text-xs text-muted-foreground pt-1 italic">Allergies, conditions, and other medical data are managed in their respective sections.</p>
+          )}
         </CardContent>
       </Card>
-      <Card><CardHeader><CardTitle className="text-base font-semibold">Medical Conditions</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground italic">Data for {displayName} not yet linked.</p></CardContent></Card>
-      <Card><CardHeader><CardTitle className="text-base font-semibold">Current Medications</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground italic">Data for {displayName} not yet linked.</p></CardContent></Card>
-      <Card className="border-destructive/30"><CardHeader className="text-destructive"><CardTitle className="text-base font-semibold flex items-center gap-1.5"><LucideAlertCircle className="h-4 w-4" />Allergies</CardTitle></CardHeader><CardContent className="bg-destructive/5"><p className="text-xs text-muted-foreground italic">Data for {displayName} not yet linked.</p></CardContent></Card>
+      {/* Use EditablePatientDataCard for these sections */}
+      <EditablePatientDataCard
+        patient={patient}
+        field="medical_conditions"
+        title="Medical Conditions"
+        placeholder="Enter medical conditions..."
+      />
+      <EditablePatientDataCard
+        patient={patient}
+        field="current_medications"
+        title="Current Medications"
+        placeholder="Enter current medications..."
+      />
+      <EditablePatientDataCard
+        patient={patient}
+        field="allergies"
+        title="Allergies"
+        placeholder="Enter allergies..."
+        isSensitive={true}
+      />
     </div>
   )
 }
 
-function PatientHistory({ patient }: PatientSubComponentProps) {
+function PatientHistory({ patient, currentPatientFullHistory }: PatientSubComponentProps) {
+  // const { patientLoading } = usePatient(); // Removed this line
+
+  // Determine if an active patient is selected to refine loading/empty messages
+  const isActivePatientSelected = !!patient?.id;
+
   return (
     <Card>
-      <CardHeader><CardTitle  className="text-base font-semibold">Consultation History: {patient.name || "Selected Patient"}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="text-base font-semibold">Consultation History: {patient?.name || "Selected Patient"}</CardTitle></CardHeader>
       <CardContent>
-        <p className="text-sm text-muted-foreground italic">Full history for patient ID {patient.id.substring(0,8)}... will be implemented here.</p>
+        {!currentPatientFullHistory && isActivePatientSelected ? (
+          // Loading state specifically for history when a patient is selected but history hasn't loaded
+          <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
+            <LucideFileText className="h-7 w-7 text-muted-foreground/80 mb-2 animate-pulse" />
+            <p className="text-xs text-muted-foreground">Loading history for {patient?.name || "selected patient"}...</p>
+          </div>
+        ) : currentPatientFullHistory && (currentPatientFullHistory.startsWith("Erro ao buscar") || currentPatientFullHistory.startsWith("Falha catastrófica")) ? (
+          // Error state: display error message from context
+          <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-destructive/10 text-destructive">
+            <LucideAlertCircle className="h-7 w-7 mb-2" />
+            <p className="text-xs text-center px-4">{currentPatientFullHistory}</p>
+          </div>
+        ) : currentPatientFullHistory && currentPatientFullHistory !== "Nenhum sumário de consulta anterior encontrado para este paciente.\n" && currentPatientFullHistory.trim() !== "Histórico de Consultas Anteriores do Paciente:" && currentPatientFullHistory.trim() !== "" ? (
+          // Success state: history data is available and not an empty/default message
+          <ScrollArea className="h-[calc(100vh-220px)]" type="auto">
+            <div className="prose prose-sm dark:prose-invert max-w-none p-1">
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  p: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"p">) => <p className="mb-2 last:mb-0" {...props} />,
+                  h1: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"h1">) => <h1 className="text-lg font-semibold mt-3 mb-1.5" {...props} />,
+                  h2: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"h2">) => <h2 className="text-base font-semibold mt-2.5 mb-1" {...props} />,
+                  h3: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"h3">) => <h3 className="text-sm font-semibold mt-2 mb-0.5" {...props} />,
+                  ul: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"ul">) => <ul className="list-disc list-inside pl-2 mb-2" {...props} />,
+                  ol: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"ol">) => <ol className="list-decimal list-inside pl-2 mb-2" {...props} />,
+                  li: ({node, ...props}: {node?: any} & React.ComponentPropsWithoutRef<"li">) => <li className="mb-0.5" {...props} />,
+                }}
+              >
+                {currentPatientFullHistory}
+              </ReactMarkdown>
+            </div>
+          </ScrollArea>
+        ) : isActivePatientSelected ? (
+          // Empty state for a selected patient: no history found, or it's the default empty message
+          <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
+            <LucideInfo className="h-7 w-7 text-muted-foreground/80 mb-2" />
+            <p className="text-xs text-muted-foreground">No consultation history available for {patient?.name || "this patient"}.</p>
+          </div>
+        ) : (
+          // Default empty state if no patient is selected (though PatientDetails should prevent this tab from being very useful then)
+          <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
+            <LucideInfo className="h-7 w-7 text-muted-foreground/80 mb-2" />
+            <p className="text-xs text-muted-foreground">Select a patient to view their history.</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -202,7 +427,7 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
     if (!activePatient?.id) return
     setIsLoadingPrevious(true)
     try {
-      const { data, error } = await supabase
+      const { data: rawData, error } = await supabase
         .from('medical_records')
         .select('id, record_date, note_content, doctor_id, doctors ( name )')
         .eq('patient_id', activePatient.id)
@@ -212,7 +437,14 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
         toast.error(`Failed to fetch notes: ${error.message}`)
         throw error
       }
-      setPreviousNotes((data as MedicalRecord[]) || [])
+      
+      const formattedData = rawData?.map(record => ({
+        ...record,
+        doctors: record.doctors && Array.isArray(record.doctors) && record.doctors.length > 0 
+                   ? record.doctors[0] 
+                   : (record.doctors && !Array.isArray(record.doctors) ? record.doctors : null)
+      })) || [];
+      setPreviousNotes(formattedData as MedicalRecord[]);
     } catch (error: any) {
       console.error('Error fetching previous notes:', error)
       // Toast is already shown if error is thrown from try block
@@ -243,7 +475,7 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
 
     setIsSaving(true)
     try {
-      const { data, error } = await supabase
+      const { data: rawData, error } = await supabase
         .from('medical_records')
         .insert({
           patient_id: activePatient.id,
@@ -258,8 +490,14 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
         throw error
       }
 
-      if (data) {
-        setPreviousNotes((prev) => [data as MedicalRecord, ...prev].sort((a, b) => new Date(b.record_date).getTime() - new Date(a.record_date).getTime()))
+      if (rawData) {
+        const formattedData = {
+            ...rawData,
+            doctors: rawData.doctors && Array.isArray(rawData.doctors) && rawData.doctors.length > 0 
+                       ? rawData.doctors[0] 
+                       : (rawData.doctors && !Array.isArray(rawData.doctors) ? rawData.doctors : null)
+        };
+        setPreviousNotes((prev) => [formattedData as MedicalRecord, ...prev].sort((a, b) => new Date(b.record_date).getTime() - new Date(a.record_date).getTime()))
         toast.success('Note saved successfully!')
       }
       setCurrentNote('')
@@ -305,9 +543,10 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
             <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
               <LucideFileText className="h-7 w-7 text-muted-foreground/80 mb-2 animate-pulse" />
               <p className="text-xs text-muted-foreground">Loading notes...</p>
-        </div>
+            </div>
           ) : previousNotes.length > 0 ? (
-            <ScrollArea className="h-[calc(100vh-380px)] space-y-2 pr-1">
+            <ScrollArea className="h-[300px]" type="auto">
+              <div className="space-y-2 pr-1">
               {previousNotes.map((note) => (
                 <Card key={note.id} className="mb-2 shadow-sm bg-muted/20 hover:bg-muted/30 transition-colors duration-150 rounded-lg">
                   <CardHeader className="pb-1 pt-1.5 px-2.5">
@@ -319,13 +558,14 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
                         })}
                       </span>
                       <span className="font-semibold">Dr. {note.doctors?.name || "Unknown"}</span>
-      </div>
+                    </div>
                   </CardHeader>
                   <CardContent className="text-xs px-2.5 pb-2">
                     <p className="whitespace-pre-wrap leading-relaxed text-foreground/90">{note.note_content}</p>
                   </CardContent>
                 </Card>
               ))}
+              </div>
             </ScrollArea>
           ) : (
             <div className="flex flex-col items-center justify-center h-36 border rounded-md bg-muted/20">
@@ -338,3 +578,129 @@ function ConsultationNotes({ activePatient, doctorId }: ConsultationNotesProps) 
     </div>
   )
 }
+
+interface ProfileDetailItemProps {
+  label: string;
+  value?: string | number | null;
+  className?: string;
+}
+
+const ProfileDetailItem: React.FC<ProfileDetailItemProps> = ({ label, value, className }) => (
+  <div className={cn("py-0.5", className)}>
+    <p className="text-xs text-muted-foreground">{label}</p>
+    <p className="font-medium truncate">{value || "Not available"}</p>
+  </div>
+);
+
+// New Component: EditablePatientDataCard
+interface EditablePatientDataCardProps {
+  patient: PatientFromContext;
+  field: keyof PatientFromContext; // Ensure field is a valid key of Patient
+  title: string;
+  placeholder: string;
+  isSensitive?: boolean;
+}
+
+const EditablePatientDataCard: React.FC<EditablePatientDataCardProps> = ({ patient, field, title, placeholder, isSensitive }) => {
+  const { fetchPatients, selectPatient } = usePatient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [content, setContent] = useState(patient[field] as string || '');
+
+  useEffect(() => {
+    if (!isEditing) {
+      setContent(patient[field] as string || '');
+    }
+  }, [patient, field, isEditing]);
+
+  const handleSave = async () => {
+    if (!patient?.id) {
+      toast.error("Patient ID is missing.");
+      return;
+    }
+
+    const updateData = {
+      [field]: content,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .update(updateData)
+        .eq('id', patient.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        toast.success(`${title} updated successfully.`);
+        await fetchPatients(); 
+        selectPatient(data as PatientFromContext);
+        setContent(data[field] as string || '');
+      }
+      setIsEditing(false);
+    } catch (error: any) {
+      toast.error(`Failed to update ${title.toLowerCase()}: ${error.message}`);
+      console.error(`Error updating ${title.toLowerCase()}:`, error);
+    }
+  };
+
+  const cardClasses = cn(isSensitive && !isEditing && "border-destructive/30");
+  const headerClasses = cn(isSensitive && !isEditing && "text-destructive");
+  const contentWrapperClasses = cn(isSensitive && !isEditing && "bg-destructive/5");
+
+  return (
+    <Card className={cardClasses}>
+      <CardHeader className={headerClasses}>
+        <CardTitle className="text-base font-semibold flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            {isSensitive && <LucideAlertCircle className="h-4 w-4" />}
+            {title}
+          </span>
+          {!isEditing ? (
+            <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)}>
+              <LucideEdit className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <div className="flex items-center space-x-2">
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600 hover:text-green-700" onClick={handleSave}>
+                      <LucideCheck className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>Save Changes</p></TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700" onClick={() => { setIsEditing(false); setContent(patient[field] as string || ''); }}>
+                      <LucideX className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>Cancel</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className={cn("text-sm", contentWrapperClasses)}>
+        {isEditing ? (
+          <Textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder={placeholder}
+            className="min-h-[80px] text-sm"
+            rows={3}
+          />
+        ) : content ? (
+          <p className="whitespace-pre-wrap">{content}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">Data for {patient.name || "Selected Patient"} not yet linked.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}; 

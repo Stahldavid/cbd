@@ -58,7 +58,7 @@ export function PatientList() {
   const filteredPatients = displayPatients.filter(
     (patient) =>
       patient.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      patient.primaryCondition?.toLowerCase().includes(searchQuery.toLowerCase()),
+      patient.rg?.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
   useEffect(() => {
@@ -77,7 +77,7 @@ export function PatientList() {
           <LucideSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search by name or condition..."
+            placeholder="Search by name or RG..."
             className="pl-8 h-9"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
