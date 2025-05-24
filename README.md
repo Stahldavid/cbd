@@ -1,5 +1,7 @@
 # curaai-project
 
+# AI TEST COMMENT: This line was added by OpenCodex to test branch commit workflow with push and .env support.
+
 ## Project Overview
 
 `curaai-project` is a web application that appears to be designed for interacting with and processing textual information, potentially from medical documents or web content, and possibly leveraging generative AI capabilities.
